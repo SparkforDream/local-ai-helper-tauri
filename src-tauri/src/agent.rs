@@ -142,6 +142,8 @@ pub struct TodoStep {
     pub risk: Risk,
     pub risk_label: String,
     pub needs_confirm: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub consequence: Option<String>,
     pub status: StepStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<String>,
@@ -177,6 +179,10 @@ pub struct AgentTurnResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<AgentSession>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub sources: Option<Vec<crate::search::SearchItem>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub search_engine: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
 
@@ -185,7 +191,7 @@ struct RawPlan {
     plan: Vec<RawPlanStep>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 struct RawPlanStep {
     #[serde(default)]
     title: String,
@@ -218,24 +224,39 @@ fn agent_system_prompt(hardware_summary: Option<&str>) -> String {
     }
 
     let mut prompt = format!(
-        "你是一个面向电脑新手和长辈的本地电脑助手，具备受控任务执行能力。\n\
+        "你是一个面向电脑新手和长辈的本地电脑助手。\n\
+         \n\
+         说话风格：\n\
+         - 直接给结论和可执行步骤，讲人话、分点简洁。\n\
+         - 不自称「作为 AI / 助手」，不说教，不在普通问答里堆砌长篇免责声明。\n\
+         \n\
+         安全尺度（宁可少做，绝不把电脑弄坏）：\n\
+         1. 绝不给出高危破坏性命令：不教 rd /s、del /f /s、format、diskpart、bcdedit、reg delete、改注册表、删 C:\\Windows 或 Program Files、关闭 Windows Defender 或 UAC。\n\
+         2. 不凭记忆编造官网网址；不确定的软件优先建议去系统自带 Microsoft Store（微软应用商店），或让对方把地址栏发来核对。不推荐「驱动精灵 / 驱动人生 / 鲁大师 / 一键清 C 盘 / 破解绿色版」。\n\
+         3. 不编造本机数字，硬件和占用数据严格以给定实测为准；超出能力或拿不准时直接说「这个我判断不了，建议问懂电脑的家人或联系品牌官方售后」。\n\
+         4. 涉及不可逆建议（如重置系统、删大文件夹、卸载驱动）时，只在开头用一句短话提醒先备份重要文件，点到为止。\n\
          \n\
          当前可调用的本机能力清单：\n\
          {cap_lines}\n\
-         工作规则（严格遵守）：\n\
-         1. 如果对方只是普通提问、聊天、咨询知识，不需要查看或操作电脑，直接用简短人话回答。\n\
-         2. 如果对方明确要求操作电脑或检查某个路径（例如在 D 盘根目录新建/删除空文件夹、检查文件夹是否存在、算目录大小），\
-            必须只输出一个 JSON 待办计划，不要加多余解释，也绝不能口头假装已经执行完成。\n\
+         待办计划规则（严格遵守）：\n\
+         1. 咨询、科普、或问「某文件夹能不能删 / 删了会怎样 / 是什么」时，只用文字回答，绝不输出 JSON。\n\
+         2. 只有对方明确下达检测或本机操作指令（且在清单范围内）时，才只输出一个 JSON 待办计划，不加多余文字，也绝不口头假装已完成。\n\
          3. JSON 格式严格如下：\n\
             {{\"plan\":[{{\"title\":\"简洁步骤说明\",\"capability\":\"能力id\",\"args\":{{\"path\":\"D:\\\\123\"}}}}]}}\n\
-         4. 单次最多规划 6 步；能力 id 必须严格从上面清单中选；Windows 路径在 JSON 里用双反斜杠，例如 \"D:\\\\123\"。\n\
-         5. 若对方要删除非空文件夹、改注册表、格盘或超出清单的操作，直接用人话说明不在安全权限范围内，不输出 JSON。\n\
+         4. 单次最多 6 步；能力 id 必须严格从清单中选；Windows 路径用双反斜杠，例如 \"D:\\\\123\"。\n\
+         5. 要求删除非空文件夹、修改系统文件、格盘、装清单外软件等越界操作时，直接用人话说明不在安全权限内，不输出 JSON。\n\
          \n\
-         示例 1：对方说「在 D 盘根目录下建一个叫 123 的空文件夹」\n\
+         示例 1（明确指令）：「在 D 盘根目录下建一个叫 123 的空文件夹」\n\
          输出：{{\"plan\":[{{\"title\":\"在 D 盘根目录创建文件夹 123\",\"capability\":\"fs.mkdir\",\"args\":{{\"path\":\"D:\\\\123\"}}}},{{\"title\":\"确认 D:\\\\123 已创建\",\"capability\":\"fs.exists\",\"args\":{{\"path\":\"D:\\\\123\"}}}}]}}\n\
          \n\
-         示例 2：对方说「把 D 盘根目录那个 123 空文件夹删了」\n\
-         输出：{{\"plan\":[{{\"title\":\"检查 D:\\\\123 是否存在且为空\",\"capability\":\"fs.exists\",\"args\":{{\"path\":\"D:\\\\123\"}}}},{{\"title\":\"删除空文件夹 D:\\\\123\",\"capability\":\"fs.rmdir_empty\",\"args\":{{\"path\":\"D:\\\\123\"}}}}]}}"
+         示例 2（明确指令）：「把 D 盘根目录那个 123 空文件夹删了」\n\
+         输出：{{\"plan\":[{{\"title\":\"检查 D:\\\\123 是否存在且为空\",\"capability\":\"fs.exists\",\"args\":{{\"path\":\"D:\\\\123\"}}}},{{\"title\":\"删除空文件夹 D:\\\\123\",\"capability\":\"fs.rmdir_empty\",\"args\":{{\"path\":\"D:\\\\123\"}}}}]}}\n\
+         \n\
+         示例 3（仅咨询，不输出 JSON）：「D 盘那个叫 Temp 的文件夹能不能删？」\n\
+         输出：先看里面是不是你自己放的文件。如果不确定用途，别急着删；可以右键看大小和修改时间，确认是临时缓存再移到回收站。\n\
+         \n\
+         示例 4（越界请求，不输出 JSON）：「帮我把 C 盘 Windows 里没用的东西全清了」\n\
+         输出：系统目录不在我的安全操作权限内，手动删很容易让系统进不去。清理空间建议打开「设置 → 系统 → 存储 → 存储感知」，或先把微信/QQ 聊天文件迁到 D 盘。"
     );
 
     if let Some(hw) = hardware_summary {
@@ -346,6 +367,36 @@ fn default_step_title(cap_id: &str, args: &Value, desc: &str) -> String {
     }
 }
 
+/// 写/删/打开类动作附带的一句话后果说明（后端硬编码，不依赖模型自述）。
+fn step_consequence(cap_id: &str) -> Option<String> {
+    match cap_id {
+        "fs.mkdir" => Some("仅新建这一级空文件夹，不会修改或覆盖已有文件。".into()),
+        "fs.rmdir_empty" => {
+            Some("仅在文件夹完全为空时删除；删除后不进回收站，无法从回收站还原。".into())
+        }
+        "sys.open" => Some("仅打开 Windows 自带系统界面，不会自动修改任何设置。".into()),
+        _ => None,
+    }
+}
+
+/// 判断用户原话是否明显只是「咨询能不能做 / 会怎样」，防止小模型越界把咨询直接转成写删计划。
+fn is_advisory_only_question(goal: &str) -> bool {
+    let t = goal.trim().to_lowercase();
+    if t.is_empty() {
+        return false;
+    }
+    let advisory_cues = [
+        "能不能删", "可不可以删", "能删吗", "可以删吗", "敢删吗", "要不要删",
+        "删了会", "删除会", "删掉会", "能不能建", "安全吗", "有影响吗",
+        "建议删", "该不该删", "是什么文件夹",
+    ];
+    let imperative_cues = [
+        "帮我删", "替我删", "给我删", "直接删", "把它删", "删了吧",
+        "帮我建", "替我建", "给我建", "帮我打开", "立刻", "马上", "现在就",
+    ];
+    advisory_cues.iter().any(|c| t.contains(c)) && !imperative_cues.iter().any(|c| t.contains(c))
+}
+
 fn build_session(
     goal: &str,
     raw_steps: Vec<RawPlanStep>,
@@ -379,6 +430,7 @@ fn build_session(
             rs.title.trim().to_string()
         };
 
+        let consequence = step_consequence(&cap_id);
         steps.push(TodoStep {
             id: idx + 1,
             title,
@@ -387,6 +439,7 @@ fn build_session(
             risk: cap.risk,
             risk_label: cap.risk.label().to_string(),
             needs_confirm: cap.risk.needs_confirm(),
+            consequence,
             status: StepStatus::Pending,
             output: None,
             error: None,
@@ -395,6 +448,13 @@ fn build_session(
 
     if steps.is_empty() {
         return Err("待办计划为空".into());
+    }
+
+    if is_advisory_only_question(goal) && steps.iter().any(|s| s.needs_confirm) {
+        return Err(
+            "你刚才是在咨询能不能做，我先不动本机文件；如果确认要执行，请直接说「帮我创建/删除 XXX」。"
+                .into(),
+        );
     }
 
     let seq = SESSION_SEQ.fetch_add(1, Ordering::Relaxed);
@@ -690,6 +750,7 @@ pub async fn run_turn(
     history: Vec<ChatMessage>,
     hardware_summary: Option<String>,
     permission: PermissionMode,
+    web_search: bool,
 ) -> AgentTurnResponse {
     let goal = history
         .iter()
@@ -698,10 +759,28 @@ pub async fn run_turn(
         .map(|m| m.content.trim().to_string())
         .unwrap_or_default();
 
+    // 按需联网检索（过筛广告与下载站，失败或断网静默降级不阻塞对话）
+    let search_outcome = if web_search {
+        crate::search::search_for_agent(goal.clone()).await
+    } else {
+        None
+    };
+    let search_sources = search_outcome.as_ref().map(|o| o.items.clone());
+    let search_engine = search_outcome.as_ref().map(|o| o.engine.clone());
+
+    let mut sys_prompt = agent_system_prompt(hardware_summary.as_deref());
+    if let Some(ref outcome) = search_outcome {
+        let block = crate::search::format_prompt_context(outcome);
+        if !block.is_empty() {
+            sys_prompt.push_str("\n\n");
+            sys_prompt.push_str(&block);
+        }
+    }
+
     let mut messages = Vec::with_capacity(history.len().min(12) + 1);
     messages.push(ChatMessage {
         role: "system".into(),
-        content: agent_system_prompt(hardware_summary.as_deref()),
+        content: sys_prompt,
     });
 
     let start = history.len().saturating_sub(12);
@@ -742,6 +821,8 @@ pub async fn run_turn(
                 model: None,
                 latency_ms: 0,
                 session: None,
+                sources: None,
+                search_engine: None,
                 error: Some(error),
             };
         }
@@ -779,6 +860,8 @@ pub async fn run_turn(
                     model: Some(stream.model),
                     latency_ms: stream.latency_ms,
                     session: Some(session),
+                    sources: None,
+                    search_engine: None,
                     error: None,
                 };
             }
@@ -791,6 +874,8 @@ pub async fn run_turn(
                     model: Some(stream.model),
                     latency_ms: stream.latency_ms,
                     session: None,
+                    sources: None,
+                    search_engine: None,
                     error: None,
                 };
             }
@@ -809,6 +894,8 @@ pub async fn run_turn(
         model: Some(stream.model),
         latency_ms: stream.latency_ms,
         session: None,
+        sources: search_sources,
+        search_engine,
         error: None,
     }
 }
@@ -826,7 +913,9 @@ async fn synthesize_observation(goal: &str, session: &AgentSession) -> Option<St
     let msgs = vec![
         ChatMessage {
             role: "system".into(),
-            content: "你是电脑助手。根据已经实测拿到的结果，用 2~3 句大白话直接给结论和下一步建议。严格使用给定数字，不编造、不说教、不输出 JSON。".into(),
+            content: "你是面向电脑新手的本地助手。根据给定实测结果，用 2~3 句大白话先说结论，再给 1~2 步安全、可逆的建议。\n\
+                      纪律：严格使用给定数字，不编造；不推荐 rd /s、改注册表或「一键清 C 盘 / 驱动精灵 / 驱动人生」；不说教、不写长篇免责声明、不输出 JSON。"
+                .into(),
         },
         ChatMessage {
             role: "user".into(),
@@ -951,5 +1040,68 @@ mod tests {
         assert!(!target.exists());
 
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn 咨询类问题拦截写删计划但放行只读检查() {
+        let del_step = vec![RawPlanStep {
+            title: "删除 123".into(),
+            capability: "fs.rmdir_empty".into(),
+            args: json!({ "path": "D:\\123" }),
+        }];
+        let err = build_session("D:\\123 这个文件夹能不能删？", del_step.clone(), PermissionMode::Review)
+            .unwrap_err();
+        assert!(err.contains("咨询"));
+
+        let err2 = build_session("删了会怎样？D:\\123 删了会出问题吗", del_step.clone(), PermissionMode::Auto)
+            .unwrap_err();
+        assert!(err2.contains("咨询"));
+
+        // 明确指令允许通过
+        let ok_del = build_session("帮我把 D:\\123 空文件夹删了吧", del_step, PermissionMode::Review);
+        assert!(ok_del.is_ok());
+
+        // 咨询语气下执行只读检查（fs.exists）允许通过
+        let read_step = vec![RawPlanStep {
+            title: "检查 D:\\123".into(),
+            capability: "fs.exists".into(),
+            args: json!({ "path": "D:\\123" }),
+        }];
+        let ok_read = build_session("D:\\123 这个文件夹能不能删？", read_step, PermissionMode::Review);
+        assert!(ok_read.is_ok());
+    }
+
+    #[test]
+    fn 高风险步骤附带简明后果说明且只读不打扰() {
+        let raw = vec![
+            RawPlanStep {
+                title: "查路径".into(),
+                capability: "fs.exists".into(),
+                args: json!({ "path": "D:\\123" }),
+            },
+            RawPlanStep {
+                title: "建目录".into(),
+                capability: "fs.mkdir".into(),
+                args: json!({ "path": "D:\\123" }),
+            },
+            RawPlanStep {
+                title: "删空目录".into(),
+                capability: "fs.rmdir_empty".into(),
+                args: json!({ "path": "D:\\123" }),
+            },
+        ];
+        let s = build_session("帮我建再删 D:\\123", raw, PermissionMode::Review).unwrap();
+        assert!(s.steps[0].consequence.is_none());
+        assert!(s.steps[1].consequence.as_deref().unwrap_or("").contains("新建"));
+        assert!(s.steps[2].consequence.as_deref().unwrap_or("").contains("不进回收站"));
+    }
+
+    #[test]
+    fn 提示词包含安全尺度与反越界纪律() {
+        let p = agent_system_prompt(None);
+        assert!(p.contains("rd /s"));
+        assert!(p.contains("Microsoft Store"));
+        assert!(p.contains("绝不输出 JSON"));
+        assert!(p.contains("点到为止"));
     }
 }

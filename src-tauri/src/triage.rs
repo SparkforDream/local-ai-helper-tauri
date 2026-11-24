@@ -66,7 +66,7 @@ fn triage_system_prompt() -> String {
          5. 含具体软件且问地址/防假站选 official_url；明确说「帮我装」选 install_software。\n\
          6. 拿不准或超出以上 9 类一律选 dont_know，不要硬猜。\n\
          \n\
-         示例（18 条）：\n\
+         示例（20 条）：\n\
          「我这破本子点啥都转半天圈圈」-> {\"intent\":\"lag_diagnose\"}\n\
          「最近开机特别慢，风扇呼呼响」-> {\"intent\":\"lag_diagnose\"}\n\
          「看看后台啥玩意最费内存」-> {\"intent\":\"mem_top\"}\n\
@@ -84,7 +84,9 @@ fn triage_system_prompt() -> String {
          「把D盘那个123空目录删掉」-> {\"intent\":\"fs_action\"}\n\
          「帮我打开一下任务管理器」-> {\"intent\":\"open_sys_tool\"}\n\
          「什么是固态硬盘和机械硬盘」-> {\"intent\":\"dont_know\"}\n\
-         「这个叫Temp的文件夹挺大的能不能删」-> {\"intent\":\"dont_know\"}",
+         「这个叫Temp的文件夹挺大的能不能删」-> {\"intent\":\"dont_know\"}\n\
+         「D盘里那个文件夹删了会怎样」-> {\"intent\":\"dont_know\"}\n\
+         「能不能帮我清一下注册表」-> {\"intent\":\"dont_know\"}",
     )
 }
 

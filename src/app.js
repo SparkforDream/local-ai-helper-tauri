@@ -1,6 +1,7 @@
 import { api } from './lib/api.js';
 import { TIERS, TIER_ORDER, GB, effectiveVram, judge } from './lib/tiers.js';
 import { handle } from './lib/pipeline.js';
+import { scamGuard, guideAnswer, C_DRIVE_TIPS, NET_OFFLINE_TIPS } from './lib/guide.js';
 import { socialAnswer } from './lib/social.js';
 import { delayFor, sleep } from './lib/delay.js';
 
@@ -39,6 +40,21 @@ let ACTIVE_STREAM = null;
 let DL_DRAFT_SOURCE = 'modelscope';
 const MODEL_DL = {};
 
+// 分层联网检索配置与对话内一键开关
+let SEARCH_CONFIG = {
+  mode: 'builtin',
+  hasBochaKey: false,
+  bochaKeyMasked: '',
+  hasTavilyKey: false,
+  tavilyKeyMasked: '',
+  timeoutSecs: 8,
+  maxResults: 4,
+};
+let SEARCH_DRAFT_MODE = 'builtin';
+let BOCHA_KEY_CLEARED = false;
+let TAVILY_KEY_CLEARED = false;
+let WEB_SEARCH_ON = true;
+
 // 多会话对话历史持久化
 let CHAT_THREADS = [];
 let CURRENT_THREAD_ID = null;
@@ -52,7 +68,7 @@ const API_PRESETS = {
   openai: { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
 };
 
-const INITIAL_GREETING = '有什么想问的直接说。卡顿、报错、找不到官网、能不能跑某个游戏，或者让我帮你在 D 盘建/删空文件夹，都行。';
+const INITIAL_GREETING = '有什么想问的直接说。卡顿体检、C 盘占满、找正版官网、蓝屏/没声音急救都能直接查；涉及新建或删除空文件夹的操作，默认会先弹窗问你确认。';
 
 // ══════════════════════════════════════════════
 // 导航
@@ -893,10 +909,10 @@ function applyPermissionUI() {
     b.classList.toggle('on', b.dataset.perm === PERMISSION_MODE));
   const hint = $('perm-hint');
   if (PERMISSION_MODE === 'auto') {
-    hint.textContent = '已开完全权限：写、删空文件夹将直接执行（本地小模型可能出错）';
+    hint.textContent = '完全权限：建/删空目录将自动执行（系统目录仍锁定，重启恢复审查）';
     hint.classList.add('warn');
   } else {
-    hint.textContent = '写、删等操作前会先弹窗询问';
+    hint.textContent = '默认只看不改，写或删空目录前会先弹一步确认';
     hint.classList.remove('warn');
   }
 }
@@ -965,6 +981,17 @@ function openReviewModal(session) {
     targetEl.hidden = false;
   } else {
     targetEl.hidden = true;
+  }
+
+  const consEl = $('modal-rv-consequence');
+  if (consEl) {
+    if (step.consequence) {
+      consEl.textContent = step.consequence;
+      consEl.className = `modal-consequence${step.risk === 'dangerous' ? ' dangerous' : ''}`;
+      consEl.hidden = false;
+    } else {
+      consEl.hidden = true;
+    }
   }
 
   $('btn-rv-approve').disabled = false;
@@ -1388,12 +1415,14 @@ async function send() {
   if (streamState.div) {
     const wasOpen = !!streamState.div.querySelector('.think-box')?.open;
     const thinkHtml = buildThinkBoxHtml(finalThinking, false, wasOpen);
+    const srcHtml = buildSourcesHtml(answer.sources);
     const tag = answer.meta ? `<div class="meta">${escapeHtml(answer.meta)}</div>` : '';
-    streamState.div.innerHTML = `<div class="bubble">${thinkHtml}${escapeHtml(answer.text)}</div>${tag}`;
+    streamState.div.innerHTML = `<div class="bubble">${thinkHtml}${escapeHtml(answer.text)}${srcHtml}</div>${tag}`;
+    bindSourceLinks(streamState.div);
     const log = $('chat-log');
     log.scrollTop = log.scrollHeight;
   } else {
-    addMsg('bot', answer.text, answer.meta, performance.now() - t0, answer.actions, finalThinking);
+    addMsg('bot', answer.text, answer.meta, performance.now() - t0, answer.actions, finalThinking, answer.sources);
   }
 
   recordThreadMsg({
@@ -1411,13 +1440,37 @@ async function send() {
   }
 }
 
-function addMsg(who, text, meta, ms, actions, thinking = '') {
+function buildSourcesHtml(sources) {
+  if (!Array.isArray(sources) || !sources.length) return '';
+  const chips = sources.map((s) => {
+    const auth = s.trust === '官方/权威';
+    const badge = auth ? ' · 官方' : '';
+    const title = s.title || s.domain || '';
+    const url = s.url && /^https:\/\//.test(s.url) ? s.url : '';
+    return `<button class="source-chip${auth ? ' auth' : ''}" type="button" data-open-url="${escapeHtml(url)}" title="${escapeHtml(title)}">${escapeHtml(s.domain || title)}${badge}</button>`;
+  }).join('');
+  return `<div class="sources-bar"><span>参考来源：</span>${chips}</div>`;
+}
+
+function bindSourceLinks(container) {
+  container.querySelectorAll('[data-open-url]').forEach((btn) => {
+    btn.onclick = () => {
+      const url = btn.dataset.openUrl;
+      if (url && /^https:\/\//.test(url)) {
+        api.openExternal(url).catch(() => {});
+      }
+    };
+  });
+}
+
+function addMsg(who, text, meta, ms, actions, thinking = '', sources = null) {
   const log = $('chat-log');
   const div = document.createElement('div');
   div.className = 'msg ' + who;
 
   const tag = meta ? `<div class="meta">${escapeHtml(meta)}</div>` : '';
   const thinkHtml = who === 'bot' ? buildThinkBoxHtml(thinking, false, false) : '';
+  const srcHtml = who === 'bot' ? buildSourcesHtml(sources) : '';
 
   // 动作按钮：这是 agent 和聊天机器人的分界。
   // 有按钮，用户点一下就推进；没按钮，只是说说话。
@@ -1428,13 +1481,14 @@ function addMsg(who, text, meta, ms, actions, thinking = '') {
       .join('')}</div>`;
   }
 
-  div.innerHTML = `<div class="bubble">${thinkHtml}${escapeHtml(text)}</div>${btnHtml}${tag}`;
+  div.innerHTML = `<div class="bubble">${thinkHtml}${escapeHtml(text)}${srcHtml}</div>${btnHtml}${tag}`;
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
 
   div.querySelectorAll('[data-act]').forEach((b) => {
     b.onclick = () => onFlowAction(b.dataset.act, b);
   });
+  bindSourceLinks(div);
 }
 
 // ══════════════════════════════════════════════
@@ -1488,6 +1542,10 @@ function stageLabel(stage) {
 // ══════════════════════════════════════════════
 
 async function answerQuestion(q, streamId) {
+  // ── -1. 反诈与远控红线：最高优先级，先于安装与官网查询 ──
+  const scam = scamGuard(q);
+  if (scam) return { text: scam.text, meta: scam.tag };
+
   // ── 0. 安装意图：优先于其它判断 ──────────
   const install = detectInstallIntent(q);
   if (install) {
@@ -1534,6 +1592,10 @@ async function answerQuestion(q, streamId) {
   const hw = answerHardware(q);
   if (hw) return hw;
 
+  // ── 2.8 高频痛点扫盲与急救剧本（确定性离线可用）──
+  const guide = guideAnswer(q);
+  if (guide) return { text: guide.text, meta: guide.tag };
+
   // ── 3. 社交与常识层 ────────────────────
   // 放在技术判断之后、模型/兜底之前：
   // 技术问题不该被「你好」的规则抢走，但寒暄要有回应。
@@ -1572,7 +1634,8 @@ async function answerQuestion(q, streamId) {
   // ── 4. 受控 Agent / 统一模型接口（本地 llama-server / 自定义 OpenAI API，流式）──
   if (LLM_CONFIG && LLM_CONFIG.mode !== 'off') {
     const nextHistory = [...CHAT_HISTORY, { role: 'user', content: q }];
-    const res = await api.agentTurn(streamId, nextHistory, buildHardwareSummary(), PERMISSION_MODE);
+    const useWebSearch = WEB_SEARCH_ON && SEARCH_CONFIG.mode !== 'off';
+    const res = await api.agentTurn(streamId, nextHistory, buildHardwareSummary(), PERMISSION_MODE, useWebSearch);
     const modeTag = LLM_CONFIG.mode === 'local' ? '本地模型' : '自定义 API';
     const modelTag = res && res.model ? ` · ${res.model}` : '';
 
@@ -1586,10 +1649,14 @@ async function answerQuestion(q, streamId) {
       };
     }
     if (res && res.ok && res.reply) {
+      const webTag = res.sources && res.sources.length
+        ? ` · 联网(${res.searchEngine || '已过筛'})`
+        : '';
       return {
         text: res.reply,
         thinking: res.thinking || '',
-        meta: `${modeTag}${modelTag}`,
+        sources: res.sources || null,
+        meta: `${modeTag}${modelTag}${webTag}`,
         recordHistory: true,
       };
     }
@@ -1605,9 +1672,9 @@ async function answerQuestion(q, streamId) {
       '这个我判断不了，不想瞎猜。\n\n' +
       '我现在不用模型也能直接帮的是：\n' +
       '· 帮你装软件（Steam、7-Zip 现在支持）\n' +
-      '· 找软件官网和下载地址\n' +
-      '· 看你这台机器的配置\n' +
-      '· 看哪个程序在吃内存\n\n' +
+      '· 找软件官网和下载地址（含常见假站提醒）\n' +
+      '· 看你这台机器的配置、卡顿体检、C 盘大项与测网\n' +
+      '· 常见急救与避坑（蓝屏、没声音、弹窗清理、反诈提醒）\n\n' +
       '如果要聊别的，可以点右上角「模型设置」接本地模型或自定义 OpenAI API。',
     meta: '超出范围',
   };
@@ -1616,21 +1683,29 @@ async function answerQuestion(q, streamId) {
 // ── 网络连通性自检（调用 Rust net.check）──────
 async function answerNetCheck(q, forced = false) {
   const t = q.toLowerCase();
-  const asksNet = forced || /(断网|没网|连不上网|网络通不通|测一下网|测网|网络正常|网好不好|上不了网)/.test(t);
+  const asksNet = forced || /(断网|没网|连不上网|网络通不通|测一下网|测网|网络正常|网好不好|上不了网|无法联网)/.test(t);
   if (!asksNet) return null;
 
   const res = await api.capabilityCall('net.check', {});
   if (!res || !res.ok || !res.data) {
-    return { text: '浏览器预览里没法测真实网络，请在桌面应用里试。', meta: '网络 · 预览' };
+    return {
+      text: `浏览器预览里没法测真实网络，请在桌面应用里试。\n\n${NET_OFFLINE_TIPS}`,
+      meta: '网络 · 预览',
+    };
   }
   const d = res.data;
   const lines = [d.summary || '网络检测完成。'];
+  let hasFail = false;
   if (Array.isArray(d.targets) && d.targets.length) {
     lines.push('');
     for (const item of d.targets) {
+      if (!item.ok) hasFail = true;
       const flag = item.ok ? `正常（${item.ms} ms）` : `失败（${item.reason}）`;
       lines.push(`· ${item.name}：${flag}`);
     }
+  }
+  if (hasFail || /(断网|没网|连不上|上不了|无法联网)/.test(t)) {
+    lines.push('', NET_OFFLINE_TIPS);
   }
   return { text: lines.join('\n'), meta: '网络 · 实测' };
 }
@@ -1638,7 +1713,7 @@ async function answerNetCheck(q, forced = false) {
 // ── 目录大项排查（调用 Rust fs.biggest）──────
 async function answerBiggestDir(q, forced = false) {
   const t = q.toLowerCase();
-  const asksBig = forced || /(哪个文件夹最大|什么占满|被什么吃掉|哪个占地方|占空间最大|大文件夹|什么最占空间)/.test(t);
+  const asksBig = forced || /(哪个文件夹最大|什么占满|被什么吃掉|哪个占地方|占空间最大|大文件夹|什么最占空间|c\s*盘.*(爆满|飘红|满了|红了))/.test(t);
   if (!asksBig) return null;
 
   const driveMatch = t.match(/([c-z])\s*盘/);
@@ -1647,10 +1722,12 @@ async function answerBiggestDir(q, forced = false) {
 
   const res = await api.capabilityCall('fs.biggest', { path: targetPath, n: 8 });
   if (!res || !res.ok || !Array.isArray(res.data)) {
-    return { text: `扫描 ${targetPath} 失败：${(res && res.error) || '请在桌面应用里试'}`, meta: '磁盘扫描' };
+    const extra = drive === 'C' ? `\n\n${C_DRIVE_TIPS}` : '';
+    return { text: `扫描 ${targetPath} 失败：${(res && res.error) || '请在桌面应用里试'}${extra}`, meta: '磁盘扫描' };
   }
   if (!res.data.length) {
-    return { text: `${targetPath} 下没有扫到可统计的非系统大项。`, meta: '磁盘 · 实测' };
+    const extra = drive === 'C' ? `\n\n${C_DRIVE_TIPS}` : '';
+    return { text: `${targetPath} 下没有扫到可统计的非系统大项。${extra}`, meta: '磁盘 · 实测' };
   }
 
   const lines = [`${targetPath} 里最占地方的前 ${res.data.length} 项（已自动跳过系统目录）：`];
@@ -1659,6 +1736,9 @@ async function answerBiggestDir(q, forced = false) {
     lines.push(`· ${item.name}（${kind}）—— ${formatBytes(item.bytes)}`);
   }
   lines.push('', '不认识的文件别随便删；可以优先看下载目录、视频或游戏文件夹。');
+  if (drive === 'C') {
+    lines.push('', C_DRIVE_TIPS);
+  }
   return { text: lines.join('\n'), meta: '磁盘 · 实测' };
 }
 
@@ -1978,12 +2058,192 @@ function isTauriEnv() {
 }
 
 // ══════════════════════════════════════════════
+// 分层联网检索设置与对话栏开关
+// ══════════════════════════════════════════════
+
+function applySearchModeUI(mode) {
+  SEARCH_DRAFT_MODE = mode || 'builtin';
+  document.querySelectorAll('#search-mode-switch button').forEach((b) =>
+    b.classList.toggle('on', b.dataset.searchMode === SEARCH_DRAFT_MODE));
+  for (const m of ['off', 'builtin', 'bocha', 'tavily']) {
+    const panel = $(`search-panel-${m}`);
+    if (panel) panel.hidden = m !== SEARCH_DRAFT_MODE;
+  }
+}
+
+function updateChatSearchBtn() {
+  const btn = $('btn-web-search');
+  if (!btn) return;
+  const modeNames = {
+    off: '已关',
+    builtin: '内置',
+    bocha: '博查',
+    tavily: 'Tavily',
+  };
+  if (SEARCH_CONFIG.mode === 'off') {
+    btn.classList.remove('on');
+    btn.textContent = '联网：已关';
+    return;
+  }
+  btn.classList.toggle('on', WEB_SEARCH_ON);
+  btn.textContent = WEB_SEARCH_ON
+    ? `联网：${modeNames[SEARCH_CONFIG.mode] || '开'}`
+    : '联网：暂停';
+}
+
+function renderSearchForm(cfg) {
+  SEARCH_CONFIG = cfg || SEARCH_CONFIG;
+  BOCHA_KEY_CLEARED = false;
+  TAVILY_KEY_CLEARED = false;
+
+  const bochaInput = $('search-bocha-key');
+  if (bochaInput) {
+    bochaInput.value = '';
+    bochaInput.placeholder = SEARCH_CONFIG.hasBochaKey
+      ? `已保存：${SEARCH_CONFIG.bochaKeyMasked}（留空保持不变）`
+      : 'sk-...';
+  }
+  const bochaClear = $('btn-clear-bocha-key');
+  if (bochaClear) bochaClear.hidden = !SEARCH_CONFIG.hasBochaKey;
+
+  const tavilyInput = $('search-tavily-key');
+  if (tavilyInput) {
+    tavilyInput.value = '';
+    tavilyInput.placeholder = SEARCH_CONFIG.hasTavilyKey
+      ? `已保存：${SEARCH_CONFIG.tavilyKeyMasked}（留空保持不变）`
+      : 'tvly-...';
+  }
+  const tavilyClear = $('btn-clear-tavily-key');
+  if (tavilyClear) tavilyClear.hidden = !SEARCH_CONFIG.hasTavilyKey;
+
+  applySearchModeUI(SEARCH_CONFIG.mode);
+  updateChatSearchBtn();
+}
+
+function readSearchFormInput() {
+  const bochaTyped = ($('search-bocha-key')?.value || '').trim();
+  const tavilyTyped = ($('search-tavily-key')?.value || '').trim();
+  return {
+    mode: SEARCH_DRAFT_MODE,
+    bochaApiKey: bochaTyped ? bochaTyped : (BOCHA_KEY_CLEARED ? '' : null),
+    tavilyApiKey: tavilyTyped ? tavilyTyped : (TAVILY_KEY_CLEARED ? '' : null),
+    timeoutSecs: SEARCH_CONFIG.timeoutSecs || 8,
+    maxResults: SEARCH_CONFIG.maxResults || 4,
+  };
+}
+
+function setSearchStatus(text, kind = '') {
+  const el = $('search-status');
+  if (!el) return;
+  if (!text) {
+    el.hidden = true;
+    el.textContent = '';
+    el.className = 'status-line';
+    return;
+  }
+  el.hidden = false;
+  el.textContent = text;
+  el.className = kind ? `status-line ${kind}` : 'status-line';
+}
+
+async function initSearchSettings() {
+  document.querySelectorAll('#search-mode-switch button').forEach((b) => {
+    b.onclick = () => {
+      applySearchModeUI(b.dataset.searchMode);
+      setSearchStatus('');
+    };
+  });
+
+  const chatToggle = $('btn-web-search');
+  if (chatToggle) {
+    chatToggle.onclick = () => {
+      if (SEARCH_CONFIG.mode === 'off') {
+        goto('settings');
+        $('setting-web-search')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+      WEB_SEARCH_ON = !WEB_SEARCH_ON;
+      updateChatSearchBtn();
+    };
+  }
+
+  const clearBocha = $('btn-clear-bocha-key');
+  if (clearBocha) {
+    clearBocha.onclick = () => {
+      BOCHA_KEY_CLEARED = true;
+      $('search-bocha-key').value = '';
+      $('search-bocha-key').placeholder = '已标记清空，点「保存检索设置」生效';
+      clearBocha.hidden = true;
+    };
+  }
+  $('search-bocha-key')?.addEventListener('input', () => {
+    if ($('search-bocha-key').value.trim()) BOCHA_KEY_CLEARED = false;
+  });
+
+  const clearTavily = $('btn-clear-tavily-key');
+  if (clearTavily) {
+    clearTavily.onclick = () => {
+      TAVILY_KEY_CLEARED = true;
+      $('search-tavily-key').value = '';
+      $('search-tavily-key').placeholder = '已标记清空，点「保存检索设置」生效';
+      clearTavily.hidden = true;
+    };
+  }
+  $('search-tavily-key')?.addEventListener('input', () => {
+    if ($('search-tavily-key').value.trim()) TAVILY_KEY_CLEARED = false;
+  });
+
+  $('btn-search-save').onclick = async () => {
+    const input = readSearchFormInput();
+    $('btn-search-save').disabled = true;
+    try {
+      const saved = await api.searchConfigSave(input);
+      if (saved.mode !== 'off') WEB_SEARCH_ON = true;
+      renderSearchForm(saved);
+      setSearchStatus('检索设置已保存。', 'ok');
+    } catch (e) {
+      setSearchStatus(`保存失败：${e.message || e}`, 'err');
+    } finally {
+      $('btn-search-save').disabled = false;
+    }
+  };
+
+  $('btn-search-test').onclick = async () => {
+    const input = readSearchFormInput();
+    $('btn-search-test').disabled = true;
+    setSearchStatus('正在实测检索与安全过滤…');
+    try {
+      const res = await api.searchTest(input);
+      if (res && res.ok && res.items && res.items.length) {
+        const domains = [...new Set(res.items.map((x) => x.domain))].slice(0, 3).join('、');
+        const blk = res.blockedCount ? `，过滤高危 ${res.blockedCount} 条` : '';
+        setSearchStatus(`检索正常（${res.engine} · ${res.latencyMs}ms）：拿到 ${res.items.length} 条可用结果${blk}（${domains}）。`, 'ok');
+      } else {
+        setSearchStatus(`未拿到可用结果：${(res && res.error) || '请检查网络或 Key'}`, 'err');
+      }
+    } catch (e) {
+      setSearchStatus(`测试失败：${e.message || e}`, 'err');
+    } finally {
+      $('btn-search-test').disabled = false;
+    }
+  };
+
+  try {
+    const loaded = await api.searchConfigGet();
+    renderSearchForm(loaded);
+  } catch {
+    renderSearchForm(SEARCH_CONFIG);
+  }
+}
+
+// ══════════════════════════════════════════════
 // 启动
 // ══════════════════════════════════════════════
 
 initTheme();
 initPermissionControls();
 initLlmSettings();
+initSearchSettings();
 initDownloadSettings();
 initFsPolicySettings();
 initAuditControls();

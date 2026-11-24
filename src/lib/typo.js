@@ -51,6 +51,9 @@ const CN_VARIANTS = {
   '内存': ['内寸', '內存'],
   '驱动': ['区动', '趋动'],
   '固态': ['固太', '故态'],
+  '火绒': ['火荣', '火容'],
+  '福昕': ['福新', '福欣'],
+  '向日葵': ['向日亏'],
 };
 
 // ─────────────────────────────────────────── 主匹配
@@ -152,6 +155,20 @@ export function composeAnswer(hit) {
   if (entry.download && entry.download !== entry.primary) {
     lines.push('');
     lines.push(`下载页：${entry.download.replace(/^https?:\/\//, '')}`);
+  }
+
+  // 简短说明
+  if (entry.note) {
+    lines.push('');
+    lines.push(entry.note);
+  }
+
+  // 防坑 / 防骗要点（最多展示 2 条，点到为止）
+  if (Array.isArray(entry.trap) && entry.trap.length) {
+    lines.push('');
+    for (const tip of entry.trap.slice(0, 2)) {
+      lines.push(`· ${tip}`);
+    }
   }
 
   return lines.join('\n');

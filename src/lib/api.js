@@ -156,11 +156,11 @@ export const api = {
     return listenEvent('llm-stream', cb);
   },
 
-  async agentTurn(streamId, messages, hardwareSummary = null, permission = 'review') {
+  async agentTurn(streamId, messages, hardwareSummary = null, permission = 'review', webSearch = true) {
     if (!isTauri) {
-      return mockAgentTurn(streamId, messages, permission);
+      return mockAgentTurn(streamId, messages, permission, webSearch);
     }
-    return await invoke('agent_turn', { streamId, messages, hardwareSummary, permission });
+    return await invoke('agent_turn', { streamId, messages, hardwareSummary, permission, webSearch });
   },
 
   async agentDecide(session, decision, permission = 'review') {
@@ -339,6 +339,71 @@ export const api = {
       return { ok: true, intent: 'dont_know', latencyMs: 35 };
     }
     return await invoke('triage_classify', { query });
+  },
+
+  // ── 分层联网检索与安全过筛 ────────────────────
+  async searchConfigGet() {
+    if (!isTauri) {
+      try {
+        const raw = localStorage.getItem('preview_search_cfg');
+        if (raw) return JSON.parse(raw);
+      } catch {}
+      return {
+        mode: 'builtin',
+        hasBochaKey: false,
+        bochaKeyMasked: '',
+        hasTavilyKey: false,
+        tavilyKeyMasked: '',
+        timeoutSecs: 8,
+        maxResults: 4,
+      };
+    }
+    return await invoke('search_config_get');
+  },
+
+  async searchConfigSave(input) {
+    if (!isTauri) {
+      const prev = await this.searchConfigGet();
+      const next = {
+        ...prev,
+        mode: input.mode || 'builtin',
+        timeoutSecs: input.timeoutSecs || 8,
+        maxResults: input.maxResults || 4,
+      };
+      if (input.bochaApiKey !== undefined && input.bochaApiKey !== null) {
+        next.hasBochaKey = !!input.bochaApiKey.trim();
+        next.bochaKeyMasked = maskPreviewKey(input.bochaApiKey);
+      }
+      if (input.tavilyApiKey !== undefined && input.tavilyApiKey !== null) {
+        next.hasTavilyKey = !!input.tavilyApiKey.trim();
+        next.tavilyKeyMasked = maskPreviewKey(input.tavilyApiKey);
+      }
+      try { localStorage.setItem('preview_search_cfg', JSON.stringify(next)); } catch {}
+      return next;
+    }
+    return await invoke('search_config_save', { input });
+  },
+
+  async searchTest(input = null) {
+    if (!isTauri) {
+      return {
+        ok: true,
+        engine: '微软官方库（预览模拟）',
+        items: [
+          {
+            title: '0xc000007b 错误解决指引',
+            url: 'https://learn.microsoft.com/zh-cn/cpp/windows/latest-supported-vc-redist',
+            domain: 'learn.microsoft.com',
+            snippet: '安装最新的 Visual C++ 运行库。',
+            trust: '官方/权威',
+            engine: '微软官方库',
+          },
+        ],
+        blockedCount: 1,
+        latencyMs: 120,
+      };
+    }
+    return await invoke('search_test', { input });
   },
 
   // ── 多会话对话历史持久化 ────────────────────

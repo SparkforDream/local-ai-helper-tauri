@@ -40,12 +40,80 @@ const SOFT_CATEGORY = [
     ],
     picks: ['7zip', 'bandizip'],
   },
-  { keys: ['播放器', '视频播放', '播放软件'], picks: [] },
+  {
+    keys: ['播放器', '视频播放', '播放软件'],
+    picks: [],
+    customAnswer:
+      'PotPlayer 和 VLC 官网在国内常直连超时，搜索前排的「中文网」几乎全是捆绑假站。\n\n' +
+      '建议直接打开系统自带的 Microsoft Store（微软应用商店）搜索安装，或先用 Windows 自带媒体播放器。',
+  },
   { keys: ['浏览器'], picks: ['chrome', 'edge'] },
+  {
+    keys: ['pdf阅读', '看pdf', 'pdf软件', 'pdf工具'],
+    picks: ['foxit', 'adobe-reader'],
+    lead: '只看 PDF 直接把文件拖进自带 Edge 浏览器就行；需要专门软件再选这两家：',
+  },
+  {
+    keys: ['杀毒软件', '弹窗拦截', '防毒软件', '拦截弹窗'],
+    picks: ['huorong'],
+    lead: 'Win10/11 自带 Windows Defender 平时够用，需要拦弹窗可单配火绒（别和其他管家叠装）：',
+  },
+  {
+    keys: ['强力卸载', '卸载工具', '卸载软件', '清残留'],
+    picks: ['geek-uninstaller'],
+    lead: '彻底卸载顽固软件并清残留，可以用这款单文件免安装工具：',
+  },
+  {
+    keys: ['远程控制', '远程协助', '远控软件'],
+    picks: ['sunlogin', 'todesk'],
+    lead: '仅限家人或熟人协助时使用，绝不把设备识别码发给陌生人或所谓客服：',
+  },
+  {
+    keys: ['硬件检测工具', '硬件检测软件', '测温度软件'],
+    picks: ['tbtool'],
+    lead: '查硬件、测温度常用这款工具合集：',
+  },
   { keys: ['输入法'], picks: [] },
   { keys: ['截图工具', '截图软件', '截图程序'], picks: [] },
   { keys: ['驱动'], picks: ['driver-nvidia', 'driver-amd'] },
 ];
+
+// ── 国内实测直连超时的软件：不硬塞打不开的链接，直接给微软商店/系统自带替代 ──
+const STORE_ALTERNATIVES = [
+  {
+    id: 'potplayer',
+    name: 'PotPlayer',
+    keys: ['potplayer', 'pot player', 'pot播放器'],
+    answer:
+      'PotPlayer 官网（daum.net / potplayer.tv）在国内常直连超时，搜索前排的「PotPlayer 中文网」几乎全是捆绑假站。\n\n' +
+      '· 优先直接按 Win 键打开 Microsoft Store（微软应用商店）搜索安装\n' +
+      '· 平时只看常见视频，Windows 自带的媒体播放器也够用',
+  },
+  {
+    id: 'vlc',
+    name: 'VLC 播放器',
+    keys: ['vlc', 'vlc播放器', 'videolan'],
+    answer:
+      'VLC 官网（videolan.org）在国内直连容易超时，别去第三方下载站下打包版。\n\n' +
+      '· 按 Win 键打开 Microsoft Store（微软应用商店），直接搜「VLC」安装官方正版',
+  },
+  {
+    id: 'sumatrapdf',
+    name: 'SumatraPDF',
+    keys: ['sumatrapdf', 'sumatra pdf', 'sumatra'],
+    answer:
+      'SumatraPDF 官网（sumatrapdfreader.org）在国内常连不上，别下第三方搬运站版本。\n\n' +
+      '· 仅阅读 PDF 不需要专门装软件，直接把 PDF 拖进系统自带的 Edge 浏览器就能看',
+  },
+];
+
+function matchStoreAlternative(text) {
+  const t = String(text || '').toLowerCase();
+  for (const item of STORE_ALTERNATIVES) {
+    if (item.keys.some((k) => t.includes(k))) return item;
+  }
+  return null;
+}
 
 function matchCategory(text) {
   const t = String(text || '').toLowerCase();
@@ -125,6 +193,15 @@ export function detectIntent(text) {
     return { intent: INTENT.OFFICIAL_SITE, software, confident: true };
   }
 
+  // ── 第一点五步：国内直连超时软件（微软商店/自带替代）──
+  const storeAlt = matchStoreAlternative(t);
+  if (storeAlt) {
+    if (askingMeaning && !wantsAddress) {
+      return { intent: 'what_is_term', software: null };
+    }
+    return { intent: INTENT.OFFICIAL_SITE, software: null, storeAlt, confident: true };
+  }
+
   // ── 第二步：没认出具体软件，看是不是说了类别 ──
   // 到这一步说明用户只给了类别（"解压软件""播放器"），没点名产品。
   const category = matchCategory(t);
@@ -132,7 +209,7 @@ export function detectIntent(text) {
     if (askingMeaning && !wantsAddress) {
       return { intent: 'what_is_term', software: null, category };
     }
-    if (category.picks.length) {
+    if (category.picks.length || category.customAnswer) {
       return { intent: INTENT.OFFICIAL_SITE, software: null, category, confident: true };
     }
     return { intent: INTENT.OFFICIAL_SITE, software: null, category, confident: false };
@@ -232,7 +309,40 @@ export function handle(text) {
 
   const hit = detected.software;
 
+  // ── 国内超时软件：直接给微软商店/系统自带方案 ──
+  if (detected.storeAlt) {
+    const answer = detected.storeAlt.answer;
+    const lint = lintTone(answer);
+    return {
+      intent: INTENT.OFFICIAL_SITE,
+      answer,
+      source: 'whitelist',
+      toneOk: lint.ok,
+      meta: {
+        id: detected.storeAlt.id,
+        name: detected.storeAlt.name,
+        trust: TRUST.CONFIDENT,
+      },
+    };
+  }
+
   // ── 类别词：给该类目下的推荐 ──────────────
+  if (detected.category && detected.category.customAnswer) {
+    const answer = detected.category.customAnswer;
+    const lint = lintTone(answer);
+    return {
+      intent: INTENT.OFFICIAL_SITE,
+      answer,
+      source: 'whitelist',
+      toneOk: lint.ok,
+      meta: {
+        category: detected.category.keys[0],
+        picks: [],
+        trust: TRUST.CONFIDENT,
+      },
+    };
+  }
+
   if (detected.category && detected.category.picks.length) {
     const picks = detected.category.picks
       .map((id) => OFFICIAL.entries.find((e) => e.id === id))
@@ -240,7 +350,7 @@ export function handle(text) {
 
     const lines = [];
     const kind = detected.category.keys[0];
-    lines.push(`${kind}有两家够用，都免费：`);
+    lines.push(detected.category.lead || `${kind}有两家够用，都免费：`);
     lines.push('');
     for (const e of picks) {
       lines.push(`${e.name}：${e.primary.replace(/^https?:\/\//, '')}`);
@@ -364,8 +474,20 @@ if (typeof process !== 'undefined' && process.argv?.[1]?.endsWith('pipeline.js')
     ['vscode下载地址', 'whitelist', 'vscode', INTENT.OFFICIAL_SITE],
     ['watt toolkit 官网', 'whitelist', 'watt-toolkit', INTENT.OFFICIAL_SITE],
     ['everything在哪下', 'whitelist', 'everything', INTENT.OFFICIAL_SITE],
+    ['火绒官网在哪', 'whitelist', 'huorong', INTENT.OFFICIAL_SITE],
+    ['火荣安全下载', 'whitelist', 'huorong', INTENT.OFFICIAL_SITE],
+    ['winrar在哪下', 'whitelist', 'winrar', INTENT.OFFICIAL_SITE],
+    ['geek卸载工具官网', 'whitelist', 'geek-uninstaller', INTENT.OFFICIAL_SITE],
+    ['福昕pdf官方地址', 'whitelist', 'foxit', INTENT.OFFICIAL_SITE],
+    ['向日葵官网', 'whitelist', 'sunlogin', INTENT.OFFICIAL_SITE],
+    ['todesk下载', 'whitelist', 'todesk', INTENT.OFFICIAL_SITE],
+    ['腾讯会议在哪下', 'whitelist', 'tencent-meeting', INTENT.OFFICIAL_SITE],
+    ['potplayer官网在哪', 'whitelist', 'potplayer', INTENT.OFFICIAL_SITE],
+    ['vlc播放器怎么下', 'whitelist', 'vlc', INTENT.OFFICIAL_SITE],
+    ['sumatrapdf下载', 'whitelist', 'sumatrapdf', INTENT.OFFICIAL_SITE],
     // 类别词：用户只说了类别，没点名产品
     ['解压软件去哪下', 'whitelist', null, INTENT.OFFICIAL_SITE],   // meta.category
+    ['播放器去哪下', 'whitelist', null, INTENT.OFFICIAL_SITE],
     ['解压软件是什么', 'none', null, 'what_is_term'],
     // 术语类，本链路不处理
     ['显存和内存有啥区别', 'none', null, 'what_is_term'],

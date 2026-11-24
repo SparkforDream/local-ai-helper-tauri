@@ -47,7 +47,8 @@
         "languages": [
           "SimpChinese"
         ],
-        "displayLanguageSelector": false
+        "displayLanguageSelector": false,
+        "template": "nsis/installer.nsi"
       }
     }
   }

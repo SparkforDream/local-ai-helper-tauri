@@ -134,7 +134,8 @@
             <button type="button" data-perm="review" class="on">请求审查</button>
             <button type="button" data-perm="auto">完全权限</button>
           </div>
-          <span class="perm-hint" id="perm-hint">写、删等操作前会先弹窗询问</span>
+          <button class="btn ghost sm web-toggle" id="btn-web-search" type="button" title="模型问答时按需联网检索（已过滤下载站与广告）">联网：内置</button>
+          <span class="perm-hint" id="perm-hint">默认只看不改，写或删空目录前会先弹一步确认</span>
         </div>
         <div class="chat-input">
           <input id="chat-text" placeholder="我电脑最近好卡，或让我帮你建/删 D 盘空文件夹…" autocomplete="off">
@@ -257,6 +258,60 @@
         <div class="status-line" id="llm-status" hidden></div>
       </div>
 
+      <!-- 分层联网检索（白名单优先 + 域名安全过筛） -->
+      <div class="setting-block" id="setting-web-search">
+        <div class="setting-head">
+          <div class="setting-info">
+            <div class="t">联网检索</div>
+            <div class="d">内置规则和官网白名单始终优先；仅在模型回答知识、报错或游戏配置时按需联网，并自动过滤下载站与广告。</div>
+          </div>
+          <div class="segmented" id="search-mode-switch">
+            <button type="button" data-search-mode="off">关闭</button>
+            <button type="button" data-search-mode="builtin">内置免配</button>
+            <button type="button" data-search-mode="bocha">博查</button>
+            <button type="button" data-search-mode="tavily">Tavily</button>
+          </div>
+        </div>
+
+        <div class="llm-panel" id="search-panel-off" hidden>
+          <p class="llm-note">已关闭联网检索，完全离线运行。</p>
+        </div>
+
+        <div class="llm-panel" id="search-panel-builtin">
+          <p class="llm-note">零配置可用：Windows 报错与系统问题直查微软官方 Learn 接口，通用问题查必应国内自然结果；断网或超时静默降级。</p>
+        </div>
+
+        <div class="llm-panel" id="search-panel-bocha" hidden>
+          <div class="field-grid">
+            <div class="field">
+              <label for="search-bocha-key">博查（Bocha）API Key（国内直连中文友好，仅保存在本机）</label>
+              <div class="field-row">
+                <input id="search-bocha-key" type="password" placeholder="sk-..." autocomplete="off">
+                <button class="btn ghost sm" id="btn-clear-bocha-key" type="button" hidden>清空 Key</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="llm-panel" id="search-panel-tavily" hidden>
+          <div class="field-grid">
+            <div class="field">
+              <label for="search-tavily-key">Tavily API Key（仅保存在本机）</label>
+              <div class="field-row">
+                <input id="search-tavily-key" type="password" placeholder="tvly-..." autocomplete="off">
+                <button class="btn ghost sm" id="btn-clear-tavily-key" type="button" hidden>清空 Key</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn primary sm" id="btn-search-save" type="button">保存检索设置</button>
+          <button class="btn ghost sm" id="btn-search-test" type="button">测试检索</button>
+        </div>
+        <div class="status-line" id="search-status" hidden></div>
+      </div>
+
       <!-- 模型下载源（默认魔搭，专业人士可切换） -->
       <div class="setting-block" id="setting-download-source">
         <div class="setting-head">
@@ -376,7 +431,7 @@
 <div class="modal-backdrop" id="modal-full-perm" hidden>
   <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-fp-title">
     <div class="modal-title" id="modal-fp-title">开启完全权限？</div>
-    <p class="modal-desc">本地小模型理解能力有限，可能看错路径或误判步骤，不建议长期开启。开启后，新建、删除空文件夹等操作将直接执行，不再逐项弹窗询问。</p>
+    <p class="modal-desc">开启后，新建或删除空文件夹将直接执行、不再逐项弹窗；本地小模型看错路径时容易误操作，不建议长期开启。系统核心目录与非空文件夹仍由底层锁死，软件重启后会自动恢复「请求审查」。</p>
     <label class="field-check modal-check">
       <input type="checkbox" id="chk-skip-fp-warn">
       <span>本次运行内不再提醒</span>
@@ -398,6 +453,7 @@
     <div class="modal-step-meta" id="modal-rv-meta"></div>
     <p class="modal-desc" id="modal-rv-action"></p>
     <div class="modal-target mono" id="modal-rv-target" hidden></div>
+    <div class="modal-consequence" id="modal-rv-consequence" hidden></div>
     <div class="modal-actions">
       <button class="btn ghost sm" id="btn-rv-cancel" type="button">取消任务</button>
       <button class="btn ghost sm" id="btn-rv-skip" type="button">跳过这步</button>

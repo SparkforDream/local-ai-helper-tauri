@@ -57,8 +57,8 @@ export function delayFor(meta = '') {
   if (/寒暄|接情绪/.test(meta)) return MIN_DELAY.emotion;
   if (/身份|能力范围/.test(meta)) return MIN_DELAY.tech;
   if (/不联网|本地时间/.test(meta)) return MIN_DELAY.tech;
-  if (/安装流程/.test(meta)) return MIN_DELAY.install;
-  if (/官网库|硬件/.test(meta)) return MIN_DELAY.tech;
+  if (/安装流程|安全提醒/.test(meta)) return MIN_DELAY.install;
+  if (/官网库|硬件|扫盲|急救/.test(meta)) return MIN_DELAY.tech;
   if (/超出范围/.test(meta)) return MIN_DELAY.boundary;
   return MIN_DELAY.default;
 }
@@ -75,6 +75,8 @@ if (typeof process !== 'undefined' && process.argv?.[1]?.endsWith('delay.js')) {
     ['官网库 · steam', 620],
     ['硬件 · 实测', 620],
     ['安装流程 · Steam · 待下载', 0],
+    ['安全提醒 · 假客服套路', 0],
+    ['急救 · 蓝屏排查', 620],
     ['超出范围', 700],
     ['未知标注', 560],
   ];

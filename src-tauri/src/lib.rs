@@ -15,6 +15,7 @@ pub mod download;
 pub mod history;
 pub mod llm;
 pub mod runtime;
+pub mod search;
 pub mod triage;
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -251,8 +252,17 @@ async fn agent_turn(
     messages: Vec<llm::ChatMessage>,
     hardware_summary: Option<String>,
     permission: agent::PermissionMode,
+    web_search: Option<bool>,
 ) -> agent::AgentTurnResponse {
-    agent::run_turn(app, stream_id, messages, hardware_summary, permission).await
+    agent::run_turn(
+        app,
+        stream_id,
+        messages,
+        hardware_summary,
+        permission,
+        web_search.unwrap_or(true),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -347,6 +357,28 @@ async fn triage_classify(query: String) -> triage::TriageResult {
 }
 
 // ══════════════════════════════════════════════
+// 分层联网检索与安全过筛
+// ══════════════════════════════════════════════
+
+#[tauri::command]
+fn search_config_get() -> search::SearchConfigView {
+    search::to_view(&search::load_config())
+}
+
+#[tauri::command]
+fn search_config_save(input: search::SearchConfigInput) -> Result<search::SearchConfigView, String> {
+    let existing = search::load_config();
+    let merged = search::merge_config(&existing, input);
+    search::save_config(&merged)?;
+    Ok(search::to_view(&merged))
+}
+
+#[tauri::command]
+async fn search_test(input: Option<search::SearchConfigInput>) -> search::SearchOutcome {
+    search::test_search(input).await
+}
+
+// ══════════════════════════════════════════════
 // 多会话对话历史持久化
 // ══════════════════════════════════════════════
 
@@ -427,6 +459,9 @@ pub fn run() {
             fs_policy_save,
             fs_pick_folder,
             triage_classify,
+            search_config_get,
+            search_config_save,
+            search_test,
             history_load,
             history_save,
             runtime_status,
