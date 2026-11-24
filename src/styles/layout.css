@@ -1,0 +1,145 @@
+/* ============================================================
+   布局：侧边栏 + 主区
+   档位页进入时侧边栏淡出并让出宽度，主区平滑接过去。
+   ============================================================ */
+
+#app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── 侧边栏 ─────────────────────────────────── */
+.sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 22px 10px 16px;
+  display: flex;
+  flex-direction: column;
+  /* 三项一起过渡：宽度、透明度、内边距，收得干净 */
+  transition:
+    width .26s cubic-bezier(.4, 0, .2, 1),
+    opacity .18s ease,
+    padding .26s cubic-bezier(.4, 0, .2, 1);
+  overflow: hidden;
+}
+
+.brand {
+  font-size: 12px;
+  color: var(--dim);
+  padding: 0 12px 18px;
+  letter-spacing: .4px;
+  white-space: nowrap;
+}
+
+.nav { display: flex; flex-direction: column; gap: 1px; }
+
+.nav-item {
+  padding: 8px 12px;
+  border-radius: 7px;
+  font-size: 13px;
+  color: var(--dim);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .12s, color .12s;
+}
+.nav-item:hover { background: var(--surface-2); color: var(--text); }
+.nav-item.active { background: var(--surface-2); color: var(--text); }
+
+/* ── 设置齿轮：钉在左下角 ─────────────────────
+   margin-top:auto 把它推到侧边栏底部，
+   只有图标没有文字，不抢导航的注意力。
+   ============================================ */
+.nav-gear {
+  margin-top: auto;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mute);
+  transition: background .13s, color .13s, transform .3s;
+}
+.nav-gear:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.nav-gear.active { background: var(--surface-2); color: var(--accent); }
+
+/* 让位状态：宽归零、透明、内边距归零，主区自动接满 */
+#app.zen .sidebar {
+  width: 0;
+  opacity: 0;
+  padding-left: 0;
+  padding-right: 0;
+  border-right-color: transparent;
+  pointer-events: none;
+}
+
+/* ── 主区 ───────────────────────────────────── */
+.main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 30px 34px 34px;
+  transition: padding .26s cubic-bezier(.4, 0, .2, 1);
+}
+#app.zen .main { padding: 38px 44px 40px; }
+
+.main::-webkit-scrollbar { width: 9px; }
+.main::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 9px;
+  border: 3px solid var(--bg);
+}
+.main::-webkit-scrollbar-thumb:hover { background: #39404e; }
+
+/* ── 页面切换 ─────────────────────────────────
+   统一 flex 列布局，避免 block/flex 混用导致高度塌陷和重叠。
+   ============================================ */
+.page { display: none; }
+.page.active {
+  display: flex;
+  flex-direction: column;
+  animation: fade .2s ease;
+}
+
+/* 除首页外都从顶部开始排；首页用 auto 外边距垂直居中 */
+#page-home.page.active { min-height: calc(100vh - 64px); }
+@keyframes fade {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* 档位页不需要撑满高度，卡片按内容自然排 */
+.page-tier.active { min-height: 0; }
+
+/* ── 返回箭头 ───────────────────────────────── */
+.tier-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 26px;
+}
+.back {
+  width: 32px; height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--dim);
+  transition: background .12s, color .12s, border-color .12s;
+}
+.back:hover {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+}
+

@@ -1,0 +1,140 @@
+/* ============================================================
+   基准：颜色、字阶、间距
+   只有四档字号，一种强调色，圆角统一 10px。
+   主题用 data-theme 切换，默认浅色。
+   ============================================================ */
+
+/* ── 浅色（默认）：底色是纯白，不带灰调 ───────── */
+:root,
+[data-theme="light"] {
+  --bg:           #ffffff;
+  --surface:      #ffffff;
+  --surface-2:    #f2f4f7;
+  --surface-hover:#e8ecf2;
+  --border:       #e3e6ec;
+  --border-hover: #cbd2de;
+  --accent-soft:  #f0f5ff;
+  --text:         #15171c;
+  --dim:          #545c6b;
+  --mute:         #8a92a1;
+  --accent:       #2f6feb;
+  --green:        #157347;
+  --amber:        #8a5a00;
+  --red:          #c4262e;
+
+  --r: 10px;
+  --sidebar-w: 188px;
+
+  color-scheme: light;
+}
+
+/* ── 深色 ─────────────────────────────────── */
+[data-theme="dark"] {
+  --bg:           #0f1115;
+  --surface:      #171a21;
+  --surface-2:    #1f232c;
+  --surface-hover:#262b36;
+  --border:       #262b34;
+  --border-hover: #333a46;
+  --accent-soft:  #151b27;
+  --text:         #e6e9ef;
+  --dim:          #8b93a3;
+  --mute:         #5b6272;
+  --accent:       #4d8dff;
+  --green:        #3fb950;
+  --amber:        #d29922;
+  --red:          #f85149;
+
+  color-scheme: dark;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Microsoft YaHei UI", "Segoe UI", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 { font-weight: 600; line-height: 1.35; }
+h1 { font-size: 30px; letter-spacing: -.4px; }
+h2 { font-size: 17px; letter-spacing: .1px; }
+
+button { font-family: inherit; cursor: pointer; }
+a { color: inherit; text-decoration: none; }
+
+/* ── 按钮 ───────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  transition: background .13s, border-color .13s, opacity .13s;
+}
+.btn:hover { background: var(--surface-hover); border-color: var(--border-hover); }
+.btn:active { transform: translateY(.5px); }
+
+.btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 500;
+}
+.btn.primary:hover { filter: brightness(1.08); }
+
+.btn.ghost { background: transparent; }
+.btn.ghost:hover { background: var(--surface-2); border-color: var(--border-hover); }
+
+.btn.sm { padding: 6px 13px; font-size: 12px; }
+.btn:disabled { opacity: .38; cursor: default; }
+.btn.block { width: 100%; }
+
+/* ── 通用 ───────────────────────────────────── */
+.spinner {
+  width: 24px; height: 24px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* hidden 必须压过 display:flex，否则加载圈不消失 */
+[hidden] { display: none !important; }
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  height: 62vh;
+  color: var(--dim);
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 50vh;
+  color: var(--mute);
+}
+
+.page-title { margin-bottom: 22px; }
+
+.mono {
+  font-family: "Cascadia Code", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+

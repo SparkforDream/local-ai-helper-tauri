@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>本地 AI 助手</title>
+<link rel="stylesheet" href="styles/base.css">
+<link rel="stylesheet" href="styles/layout.css">
+<link rel="stylesheet" href="styles/pages.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- 侧边栏：进入档位页时整体淡出 -->
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">本地 AI 助手</div>
+    <nav class="nav">
+      <a class="nav-item active" data-page="home">首页</a>
+      <a class="nav-item" data-page="tier">档位</a>
+      <a class="nav-item" data-page="chat">问问题</a>
+      <a class="nav-item" data-page="spec">配置详情</a>
+    </nav>
+
+    <!-- 设置固定在左下角，只有图标 -->
+    <button class="nav-gear" id="btn-gear" title="设置" aria-label="设置">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="1.8"
+           stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+  </aside>
+
+  <main class="main" id="main">
+
+    <!-- ══════════ 首页 ══════════ -->
+    <section class="page active" id="page-home">
+      <div class="loading" id="home-loading">
+        <div class="spinner"></div>
+        <p>正在看你这台机器…</p>
+      </div>
+
+      <div class="hero" id="home-body" hidden>
+        <div class="hero-kicker">看完了</div>
+        <h1 class="hero-title" id="hero-title"></h1>
+        <p class="hero-line" id="hero-line"></p>
+        <div class="hero-actions">
+          <button class="btn primary" id="btn-start">开始</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════ 档位：横向，侧边栏让位 ══════════ -->
+    <section class="page page-tier" id="page-tier">
+      <header class="tier-header">
+        <button class="back" id="btn-tier-back" aria-label="返回">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </button>
+        <h2>选一档</h2>
+      </header>
+
+      <div class="tier-track" id="tier-cards"></div>
+      <div class="tier-foot">
+        <span class="tier-foot-note">默认走魔搭官方节点，支持断点续传。</span>
+        <div class="chat-bar-actions">
+          <button class="btn ghost sm" id="btn-tier-import" type="button">导入本地 .gguf</button>
+          <button class="btn ghost sm" id="btn-tier-source" type="button">下载慢？切换下载源</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════ 网页版引导 ══════════ -->
+    <section class="page" id="page-tutorial">
+      <header class="tier-header">
+        <button class="back" id="btn-tut-back" aria-label="返回">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </button>
+        <h2>用网页版 AI</h2>
+      </header>
+      <div class="guide-card">
+        <p class="guide-lead">这台机器跑本地模型会太慢，直接用浏览器开网页版最省心，不占内存和硬盘。</p>
+        <div class="guide-steps">
+          <div class="guide-step">
+            <span class="guide-num">1</span>
+            <span>按键盘左下角的 <kbd>Win</kbd> 键（四个小方块那个键）。</span>
+          </div>
+          <div class="guide-step">
+            <span class="guide-num">2</span>
+            <span>直接打字输入 <kbd>Edge</kbd>，按回车打开浏览器。</span>
+          </div>
+          <div class="guide-step">
+            <span class="guide-num">3</span>
+            <span>在最上面的地址栏输入 <span class="mono">chat.deepseek.com</span>，按回车就能直接问问题。</span>
+          </div>
+        </div>
+        <div class="hero-actions">
+          <button class="btn primary" id="btn-open-deepseek">直接打开网页版</button>
+          <button class="btn ghost" id="btn-tut-to-settings">我有 API，去设置填写</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════ 问问题 ══════════ -->
+    <section class="page" id="page-chat">
+      <div class="chat">
+        <div class="chat-bar">
+          <div class="chat-engine">
+            <span class="chat-dot" id="chat-dot"></span>
+            <span id="chat-engine-label">仅内置规则</span>
+          </div>
+          <div class="chat-bar-actions">
+            <button class="btn ghost sm" id="btn-chat-history" type="button">历史会话</button>
+            <button class="btn ghost sm" id="btn-chat-settings" type="button">模型设置</button>
+            <button class="btn ghost sm" id="btn-chat-clear" type="button">新对话</button>
+          </div>
+        </div>
+        <div class="history-drawer" id="history-drawer" hidden></div>
+        <div class="chat-log" id="chat-log">
+          <div class="msg bot">
+            <div class="bubble">有什么想问的直接说。卡顿、报错、找不到官网、能不能跑某个游戏，都行。</div>
+          </div>
+        </div>
+        <div class="chat-perm-row">
+          <div class="segmented segmented-sm" id="perm-switch">
+            <button type="button" data-perm="review" class="on">请求审查</button>
+            <button type="button" data-perm="auto">完全权限</button>
+          </div>
+          <span class="perm-hint" id="perm-hint">写、删等操作前会先弹窗询问</span>
+        </div>
+        <div class="chat-input">
+          <input id="chat-text" placeholder="我电脑最近好卡，或让我帮你建/删 D 盘空文件夹…" autocomplete="off">
+          <button class="btn primary" id="btn-send">发送</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════════ 配置详情（独立页，不占主流程）══════════ -->
+    <section class="page" id="page-spec">
+      <h2 class="page-title">配置详情</h2>
+      <div class="specs" id="spec-grid"></div>
+      <div class="spec-foot">
+        <button class="btn ghost sm" id="btn-refresh">重新检测</button>
+      </div>
+    </section>
+
+    <!-- ══════════ 设置 ══════════ -->
+    <section class="page" id="page-settings">
+      <header class="tier-header">
+        <button class="back" id="btn-settings-back" aria-label="返回">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M15 18l-6-6 6-6"/>
+          </svg>
+        </button>
+        <h2>设置</h2>
+      </header>
+
+      <!-- 主题 -->
+      <div class="setting">
+        <div class="setting-info">
+          <div class="t">主题</div>
+          <div class="d">浅色适合白天，深色适合晚上。</div>
+        </div>
+        <div class="segmented" id="theme-switch">
+          <button data-theme-val="light">浅色</button>
+          <button data-theme-val="dark">深色</button>
+        </div>
+      </div>
+
+      <!-- 模型与 OpenAI 兼容 API -->
+      <div class="setting-block">
+        <div class="setting-head">
+          <div class="setting-info">
+            <div class="t">模型与接口</div>
+            <div class="d">确定性功能（查硬件、找官网、装软件）始终优先；超出规则的问题交给所选模型。</div>
+          </div>
+          <div class="segmented" id="llm-mode-switch">
+            <button data-llm-mode="off">关闭</button>
+            <button data-llm-mode="local">本地模型</button>
+            <button data-llm-mode="custom">自定义 API</button>
+          </div>
+        </div>
+
+        <div class="llm-panel" id="llm-panel-off">
+          <p class="llm-note">当前仅使用内置规则，不连接本地服务或云端接口。</p>
+        </div>
+
+        <div class="llm-panel" id="llm-panel-local" hidden>
+          <div class="field-grid">
+            <div class="field">
+              <label>内置本地推理引擎（退出软件时自动关闭，不留后台）</label>
+              <div class="field-row">
+                <span class="llm-note" id="rt-status-text" style="flex:1">正在检测本地引擎…</span>
+                <button class="btn primary sm" id="btn-rt-start" type="button">一键启动</button>
+                <button class="btn ghost sm" id="btn-rt-stop" type="button" hidden>停止</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="llm-local-url">本地 OpenAI 服务地址（llama-server / Ollama 等）</label>
+              <input id="llm-local-url" type="text" placeholder="http://127.0.0.1:18090/v1" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="llm-local-model">模型名（本地服务不校验时留 local 即可）</label>
+              <input id="llm-local-model" type="text" placeholder="local" autocomplete="off">
+            </div>
+            <label class="field-check">
+              <input id="llm-disable-thinking" type="checkbox" checked>
+              <span>关闭思考链（适配 Qwen3，开启更快；取消勾选可在对话里展开查看思考过程）</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="llm-panel" id="llm-panel-custom" hidden>
+          <div class="field-grid">
+            <div class="field">
+              <label>常用服务商预设（点击自动填入地址和默认模型名，再补 API Key）</label>
+              <div class="preset-row" id="api-preset-row">
+                <button class="btn ghost sm" type="button" data-preset="minimax">MiniMax</button>
+                <button class="btn ghost sm" type="button" data-preset="deepseek">DeepSeek</button>
+                <button class="btn ghost sm" type="button" data-preset="zhipu">智谱 GLM</button>
+                <button class="btn ghost sm" type="button" data-preset="siliconflow">硅基流动</button>
+                <button class="btn ghost sm" type="button" data-preset="openai">OpenAI</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="llm-custom-url">Base URL（OpenAI 兼容，自动补全 /chat/completions）</label>
+              <input id="llm-custom-url" type="text" placeholder="https://api.openai.com/v1" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="llm-custom-key">API Key（只保存在本机，不对外展示明文）</label>
+              <div class="field-row">
+                <input id="llm-custom-key" type="password" placeholder="sk-..." autocomplete="off">
+                <button class="btn ghost sm" id="btn-clear-key" type="button" hidden>清空 Key</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="llm-custom-model">模型名</label>
+              <input id="llm-custom-model" type="text" placeholder="例如 MiniMax-M2.7 / deepseek-chat / glm-4-flash" autocomplete="off">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn primary sm" id="btn-llm-save" type="button">保存设置</button>
+          <button class="btn ghost sm" id="btn-llm-test" type="button">测试连接</button>
+        </div>
+        <div class="status-line" id="llm-status" hidden></div>
+      </div>
+
+      <!-- 模型下载源（默认魔搭，专业人士可切换） -->
+      <div class="setting-block" id="setting-download-source">
+        <div class="setting-head">
+          <div class="setting-info">
+            <div class="t">模型下载源</div>
+            <div class="d">除非您遇到严重的下载问题或您是专业人士，否则不推荐修改。</div>
+          </div>
+          <div class="segmented" id="dl-source-switch">
+            <button type="button" data-dl-source="modelscope">魔搭（默认）</button>
+            <button type="button" data-dl-source="hf_mirror">备用镜像</button>
+            <button type="button" data-dl-source="custom">自定义</button>
+          </div>
+        </div>
+
+        <div class="llm-panel" id="dl-panel-custom" hidden>
+          <div class="field-grid">
+            <div class="field">
+              <label for="dl-custom-url">自定义下载源基础地址（支持 {file} 占位符直接指向文件名）</label>
+              <input id="dl-custom-url" type="text" placeholder="https://example.com/models 或 http://192.168.1.5:8080/{file}" autocomplete="off">
+            </div>
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn primary sm" id="btn-dl-save" type="button">保存下载源</button>
+        </div>
+        <div class="status-line" id="dl-status" hidden></div>
+
+        <div class="llm-panel" style="margin-top:12px">
+          <div class="field-grid">
+            <div class="field">
+              <label>导入本地已有模型（.gguf，不复制文件、直接加载）</label>
+              <div class="field-row">
+                <input id="dl-import-path" type="text" placeholder="未导入，点击右侧「选择文件」或粘贴路径" autocomplete="off">
+                <button class="btn ghost sm" id="btn-import-pick" type="button">选择文件</button>
+                <button class="btn primary sm" id="btn-import-apply" type="button">导入</button>
+                <button class="btn ghost sm" id="btn-import-clear" type="button" hidden>清除</button>
+              </div>
+            </div>
+          </div>
+          <div class="status-line" id="import-status" hidden></div>
+        </div>
+      </div>
+
+      <!-- 授权目录白名单（P2-a） -->
+      <div class="setting-block" id="setting-fs-policy">
+        <div class="setting-head">
+          <div class="setting-info">
+            <div class="t">目录操作授权白名单</div>
+            <div class="d">开启后，助手的新建/删除空文件夹能力仅允许在下方白名单目录内执行。</div>
+          </div>
+        </div>
+        <div class="llm-panel">
+          <div class="field-grid">
+            <label class="field-check">
+              <input id="chk-fs-restrict" type="checkbox">
+              <span>仅允许在下方授权目录内操作（未勾选时仅按系统目录护栏拦截）</span>
+            </label>
+            <div class="field-row">
+              <input id="fs-allow-input" type="text" placeholder="输入绝对路径，如 D:\123 或 D:\test" autocomplete="off">
+              <button class="btn ghost sm" id="btn-fs-pick" type="button">浏览</button>
+              <button class="btn ghost sm" id="btn-fs-add" type="button">添加</button>
+            </div>
+            <div class="dir-tags" id="fs-allow-tags"></div>
+          </div>
+          <div class="form-actions">
+            <button class="btn primary sm" id="btn-fs-save" type="button">保存白名单</button>
+          </div>
+          <div class="status-line" id="fs-policy-status" hidden></div>
+        </div>
+      </div>
+
+      <!-- 最近操作审计记录 -->
+      <div class="setting-block">
+        <div class="setting-head">
+          <div class="setting-info">
+            <div class="t">最近操作记录</div>
+            <div class="d">记录助手在本机执行过的查看、创建、删除或打开操作（本次运行内保留）。</div>
+          </div>
+          <div class="chat-bar-actions">
+            <button class="btn ghost sm" id="btn-audit-refresh" type="button">刷新</button>
+            <button class="btn ghost sm" id="btn-audit-clear" type="button">清空</button>
+          </div>
+        </div>
+        <div class="audit-list" id="audit-list">
+          <div class="audit-empty">还没有执行过本机操作。</div>
+        </div>
+      </div>
+
+      <!-- 软件信息 -->
+      <div class="setting">
+        <div class="setting-info">
+          <div class="t">版本</div>
+          <div class="d" id="info-version">—</div>
+        </div>
+      </div>
+
+      <div class="setting">
+        <div class="setting-info">
+          <div class="t">运行环境</div>
+          <div class="d" id="info-runtime">—</div>
+        </div>
+      </div>
+
+      <div class="setting">
+        <div class="setting-info">
+          <div class="t">上次检测</div>
+          <div class="d" id="info-collected">—</div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ══════════ 弹窗：切换完全权限二次确认 ══════════ -->
+<div class="modal-backdrop" id="modal-full-perm" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-fp-title">
+    <div class="modal-title" id="modal-fp-title">开启完全权限？</div>
+    <p class="modal-desc">本地小模型理解能力有限，可能看错路径或误判步骤，不建议长期开启。开启后，新建、删除空文件夹等操作将直接执行，不再逐项弹窗询问。</p>
+    <label class="field-check modal-check">
+      <input type="checkbox" id="chk-skip-fp-warn">
+      <span>本次运行内不再提醒</span>
+    </label>
+    <div class="modal-actions">
+      <button class="btn ghost sm" id="btn-fp-cancel" type="button">保持请求审查</button>
+      <button class="btn danger sm" id="btn-fp-confirm" type="button">仍然开启</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════ 弹窗：大动作权限审查 ══════════ -->
+<div class="modal-backdrop" id="modal-review" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="modal-rv-title">
+    <div class="modal-head-row">
+      <div class="modal-title" id="modal-rv-title">需要你确认这个操作</div>
+      <span class="risk-badge" id="modal-rv-badge">可撤销</span>
+    </div>
+    <div class="modal-step-meta" id="modal-rv-meta"></div>
+    <p class="modal-desc" id="modal-rv-action"></p>
+    <div class="modal-target mono" id="modal-rv-target" hidden></div>
+    <div class="modal-actions">
+      <button class="btn ghost sm" id="btn-rv-cancel" type="button">取消任务</button>
+      <button class="btn ghost sm" id="btn-rv-skip" type="button">跳过这步</button>
+      <button class="btn primary sm" id="btn-rv-approve" type="button">允许执行</button>
+    </div>
+  </div>
+</div>
+
+<script src="lib/mock.js"></script>
+<script type="module" src="app.js"></script>
+</body>
+</html>
+
+
