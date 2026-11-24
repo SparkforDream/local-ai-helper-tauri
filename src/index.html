@@ -14,21 +14,34 @@
   <!-- 侧边栏：进入档位页时整体淡出 -->
   <aside class="sidebar" id="sidebar">
     <div class="brand">本地 AI 助手</div>
-    <nav class="nav">
-      <a class="nav-item active" data-page="home">首页</a>
-      <a class="nav-item" data-page="tier">档位</a>
-      <a class="nav-item" data-page="chat">问问题</a>
-      <a class="nav-item" data-page="spec">配置详情</a>
+    <nav class="nav" aria-label="主导航">
+      <a class="nav-item active" data-page="home" tabindex="0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10.5L12 3l9 7.5"/><path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5"/></svg>
+        <span>首页</span>
+      </a>
+      <a class="nav-item" data-page="chat" tabindex="0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span>问问题</span>
+      </a>
+      <a class="nav-item" data-page="tier" tabindex="0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+        <span>选模型</span>
+      </a>
+      <a class="nav-item" data-page="spec" tabindex="0">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 14h3M1 9h3M1 14h3"/></svg>
+        <span>配置详情</span>
+      </a>
     </nav>
 
-    <!-- 设置固定在左下角，只有图标 -->
+    <!-- 设置固定在左下角：图标 + 文字清晰可读 -->
     <button class="nav-gear" id="btn-gear" title="设置" aria-label="设置">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none"
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
            stroke="currentColor" stroke-width="1.8"
-           stroke-linecap="round" stroke-linejoin="round">
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <circle cx="12" cy="12" r="3"/>
         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
       </svg>
+      <span>设置</span>
     </button>
   </aside>
 
@@ -46,7 +59,9 @@
         <h1 class="hero-title" id="hero-title"></h1>
         <p class="hero-line" id="hero-line"></p>
         <div class="hero-actions">
-          <button class="btn primary" id="btn-start">开始</button>
+          <button class="btn primary" id="btn-home-chat" type="button">直接问问题</button>
+          <button class="btn ghost" id="btn-home-diag" type="button">查电脑为什么卡</button>
+          <button class="btn ghost" id="btn-start" type="button">选本地模型</button>
         </div>
       </div>
     </section>
@@ -124,10 +139,39 @@
           </div>
         </div>
         <div class="history-drawer" id="history-drawer" hidden></div>
-        <div class="chat-log" id="chat-log">
-          <div class="msg bot">
-            <div class="bubble">有什么想问的直接说。卡顿、报错、找不到官网、能不能跑某个游戏，都行。</div>
+        <div class="chat-log-wrap">
+          <div class="chat-log" id="chat-log">
+            <div class="msg bot">
+              <div class="bubble">有什么想问的直接说。卡顿体检、C 盘占满、找正版官网、蓝屏/没声音急救都能直接查；涉及新建或删除空文件夹的操作，默认会先弹窗问你确认。</div>
+            </div>
+            <div class="quick-grid" id="chat-quick-grid" aria-label="常用快捷问题">
+              <button class="quick-card" type="button" data-quick="我电脑最近好卡，帮我体检一下">
+                <span class="qc-t">查电脑为什么卡</span>
+                <span class="qc-d">五项硬指标实测 + 最占内存程序</span>
+              </button>
+              <button class="quick-card" type="button" data-quick="C 盘爆满了，帮我看看什么最占空间">
+                <span class="qc-t">C 盘满了找大项</span>
+                <span class="qc-d">扫描非系统大文件夹 + 安全迁移步骤</span>
+              </button>
+              <button class="quick-card" type="button" data-quick="解压软件去哪下">
+                <span class="qc-t">找正版官网防假站</span>
+                <span class="qc-d">28 款实测官网直达，避开高速下载器</span>
+              </button>
+              <button class="quick-card" type="button" data-quick="帮我测一下现在网通不通">
+                <span class="qc-t">测一下网通不通</span>
+                <span class="qc-d">检测网关、DNS 与外网连通延迟</span>
+              </button>
+              <button class="quick-card" type="button" data-quick="电脑突然蓝屏了怎么办">
+                <span class="qc-t">蓝屏 / 没声音急救</span>
+                <span class="qc-d">按步骤排查，不用乱装万能驱动</span>
+              </button>
+              <button class="quick-card" type="button" data-quick="右下角老弹广告和流氓软件怎么彻底清干净">
+                <span class="qc-t">清理弹窗与流氓软件</span>
+                <span class="qc-d">关自启、系统查杀与无残留卸载</span>
+              </button>
+            </div>
           </div>
+          <button class="scroll-bottom-btn" id="btn-scroll-bottom" type="button" hidden>↓ 回到最新消息</button>
         </div>
         <div class="chat-perm-row">
           <div class="segmented segmented-sm" id="perm-switch">
@@ -138,8 +182,9 @@
           <span class="perm-hint" id="perm-hint">默认只看不改，写或删空目录前会先弹一步确认</span>
         </div>
         <div class="chat-input">
-          <input id="chat-text" placeholder="我电脑最近好卡，或让我帮你建/删 D 盘空文件夹…" autocomplete="off">
-          <button class="btn primary" id="btn-send">发送</button>
+          <label class="sr-only" for="chat-text">输入你想问的问题</label>
+          <textarea id="chat-text" rows="1" placeholder="直接说遇到的问题（Enter 发送，Shift+Enter 换行）…" autocomplete="off"></textarea>
+          <button class="btn primary" id="btn-send" type="button">发送</button>
         </div>
       </div>
     </section>
@@ -166,7 +211,7 @@
         <h2>设置</h2>
       </header>
 
-      <!-- 主题 -->
+      <!-- 主题与字号 -->
       <div class="setting">
         <div class="setting-info">
           <div class="t">主题</div>
@@ -175,6 +220,17 @@
         <div class="segmented" id="theme-switch">
           <button data-theme-val="light">浅色</button>
           <button data-theme-val="dark">深色</button>
+        </div>
+      </div>
+
+      <div class="setting">
+        <div class="setting-info">
+          <div class="t">字号</div>
+          <div class="d">觉得字偏小可切换大字模式，方便阅读。</div>
+        </div>
+        <div class="segmented" id="font-switch">
+          <button type="button" data-font-val="normal">标准</button>
+          <button type="button" data-font-val="large">大字</button>
         </div>
       </div>
 
@@ -312,6 +368,11 @@
         <div class="status-line" id="search-status" hidden></div>
       </div>
 
+      <!-- 专业与高级设置（默认折叠，减少新手干扰） -->
+      <details class="adv-details" id="settings-advanced">
+        <summary class="adv-summary">专业与高级设置（下载源、本地导入、目录白名单、操作记录）</summary>
+        <div class="adv-body">
+
       <!-- 模型下载源（默认魔搭，专业人士可切换） -->
       <div class="setting-block" id="setting-download-source">
         <div class="setting-head">
@@ -400,6 +461,9 @@
           <div class="audit-empty">还没有执行过本机操作。</div>
         </div>
       </div>
+
+        </div>
+      </details>
 
       <!-- 软件信息 -->
       <div class="setting">

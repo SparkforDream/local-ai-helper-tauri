@@ -34,6 +34,7 @@ async function listenEvent(event, cb) {
 const PREVIEW_LLM_KEY = 'preview_llm_cfg';
 const PREVIEW_DL_KEY = 'preview_dl_cfg';
 const PREVIEW_DL_TIMERS = new Map();
+const PREVIEW_CANCELLED_STREAMS = new Set();
 
 function loadPreviewDownloadCfg() {
   try {
@@ -149,6 +150,14 @@ export const api = {
       return { ok: false, latencyMs: 0, error: '浏览器预览不支持调用模型，请在桌面端使用。' };
     }
     return await invoke('llm_chat', { messages, hardwareSummary });
+  },
+
+  async llmCancelStream(streamId) {
+    if (!isTauri) {
+      PREVIEW_CANCELLED_STREAMS.add(streamId);
+      return true;
+    }
+    return await invoke('llm_cancel_stream', { streamId });
   },
 
   // ── 受控 Agent（流式 + 待办规划 + 权限审查）──────

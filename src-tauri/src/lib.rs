@@ -241,6 +241,11 @@ async fn llm_chat(
     llm::chat(messages, hardware_summary).await
 }
 
+#[tauri::command]
+fn llm_cancel_stream(stream_id: String) -> bool {
+    llm::cancel_stream(&stream_id)
+}
+
 // ══════════════════════════════════════════════
 // 受控 Agent 接口（待办规划 + 权限闸门 + 逐项执行）
 // ══════════════════════════════════════════════
@@ -443,6 +448,7 @@ pub fn run() {
             llm_config_save,
             llm_test,
             llm_chat,
+            llm_cancel_stream,
             agent_turn,
             agent_decide,
             agent_audit_list,

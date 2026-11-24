@@ -182,6 +182,8 @@ pub struct AgentTurnResponse {
     pub sources: Option<Vec<crate::search::SearchItem>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub search_engine: Option<String>,
+    #[serde(default)]
+    pub cancelled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
@@ -798,7 +800,7 @@ pub async fn run_turn(
 
     let app_clone = app.clone();
     let sid = stream_id.clone();
-    let stream_res = llm::complete_messages_stream(messages, 1024, move |kind, delta| {
+    let stream_res = llm::complete_messages_stream(Some(stream_id.clone()), messages, 1024, move |kind, delta| {
         let _ = app_clone.emit(
             "llm-stream",
             json!({
@@ -823,6 +825,7 @@ pub async fn run_turn(
                 session: None,
                 sources: None,
                 search_engine: None,
+                cancelled: false,
                 error: Some(error),
             };
         }
@@ -833,6 +836,26 @@ pub async fn run_turn(
     } else {
         Some(stream.thinking)
     };
+
+    if stream.cancelled {
+        return AgentTurnResponse {
+            ok: true,
+            kind: "chat".into(),
+            reply: Some(if stream.content.is_empty() {
+                "已停止生成。".into()
+            } else {
+                stream.content
+            }),
+            thinking,
+            model: Some(stream.model),
+            latency_ms: stream.latency_ms,
+            session: None,
+            sources: search_sources,
+            search_engine,
+            cancelled: true,
+            error: None,
+        };
+    }
 
     if let Some(raw_steps) = parse_plan_from_text(&stream.content) {
         match build_session(&goal, raw_steps, permission) {
@@ -862,6 +885,7 @@ pub async fn run_turn(
                     session: Some(session),
                     sources: None,
                     search_engine: None,
+                    cancelled: false,
                     error: None,
                 };
             }
@@ -876,6 +900,7 @@ pub async fn run_turn(
                     session: None,
                     sources: None,
                     search_engine: None,
+                    cancelled: false,
                     error: None,
                 };
             }
@@ -896,6 +921,7 @@ pub async fn run_turn(
         session: None,
         sources: search_sources,
         search_engine,
+        cancelled: false,
         error: None,
     }
 }

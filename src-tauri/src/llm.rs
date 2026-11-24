@@ -15,11 +15,13 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 
 #[cfg(windows)]
@@ -574,6 +576,62 @@ pub struct StreamResult {
     pub thinking: String,
     pub model: String,
     pub latency_ms: u64,
+    pub cancelled: bool,
+}
+
+#[derive(Default)]
+struct StreamTracker {
+    pids: HashMap<String, u32>,
+    cancelled: HashSet<String>,
+}
+
+static STREAM_TRACKER: OnceLock<Mutex<StreamTracker>> = OnceLock::new();
+
+fn stream_tracker() -> &'static Mutex<StreamTracker> {
+    STREAM_TRACKER.get_or_init(|| Mutex::new(StreamTracker::default()))
+}
+
+struct StreamPidGuard(Option<String>);
+impl Drop for StreamPidGuard {
+    fn drop(&mut self) {
+        if let Some(id) = self.0.take() {
+            if let Ok(mut guard) = stream_tracker().lock() {
+                guard.pids.remove(&id);
+            }
+        }
+    }
+}
+
+/// 立即中止指定 stream_id 正在进行的流式生成（关闭底层 curl.exe 进程）。
+pub fn cancel_stream(stream_id: &str) -> bool {
+    let id = stream_id.trim();
+    if id.is_empty() {
+        return false;
+    }
+    let pid_opt = {
+        let mut guard = stream_tracker().lock().unwrap_or_else(|e| e.into_inner());
+        guard.cancelled.insert(id.to_string());
+        guard.pids.remove(id)
+    };
+    if let Some(pid) = pid_opt {
+        #[cfg(windows)]
+        {
+            let mut cmd = Command::new("taskkill");
+            cmd.args(["/PID", &pid.to_string(), "/T", "/F"])
+                .creation_flags(CREATE_NO_WINDOW);
+            let _ = cmd.output();
+        }
+        return true;
+    }
+    false
+}
+
+fn take_cancelled(stream_id: Option<&str>) -> bool {
+    let Some(id) = stream_id else {
+        return false;
+    };
+    let mut guard = stream_tracker().lock().unwrap_or_else(|e| e.into_inner());
+    guard.cancelled.remove(id)
 }
 
 /// 流式 <think>...</think> 拆分器：
@@ -678,6 +736,7 @@ fn send_stream_blocking<F>(
     cfg: &LlmConfig,
     messages: Vec<ChatMessage>,
     max_tokens: u32,
+    stream_id: Option<String>,
     mut on_chunk: F,
 ) -> Result<StreamResult, String>
 where
@@ -739,9 +798,36 @@ where
     cmd.creation_flags(CREATE_NO_WINDOW);
 
     let t0 = Instant::now();
+    if take_cancelled(stream_id.as_deref()) {
+        return Ok(StreamResult {
+            content: String::new(),
+            thinking: String::new(),
+            model,
+            latency_ms: 0,
+            cancelled: true,
+        });
+    }
+
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("无法调用系统 curl.exe：{e}"))?;
+
+    if let Some(ref id) = stream_id {
+        let mut guard = stream_tracker().lock().unwrap_or_else(|e| e.into_inner());
+        if guard.cancelled.remove(id) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(StreamResult {
+                content: String::new(),
+                thinking: String::new(),
+                model,
+                latency_ms: t0.elapsed().as_millis() as u64,
+                cancelled: true,
+            });
+        }
+        guard.pids.insert(id.clone(), child.id());
+    }
+    let _pid_guard = StreamPidGuard(stream_id.clone());
 
     if let Some(mut stdin) = child.stdin.take() {
         stdin
@@ -830,6 +916,16 @@ where
         .wait_with_output()
         .map_err(|e| format!("等待网络结束失败：{e}"))?;
 
+    if take_cancelled(stream_id.as_deref()) {
+        return Ok(StreamResult {
+            content: full_content.trim().to_string(),
+            thinking: full_thinking.trim().to_string(),
+            model: reply_model,
+            latency_ms: t0.elapsed().as_millis() as u64,
+            cancelled: true,
+        });
+    }
+
     if !out.status.success() {
         let code = out.status.code().unwrap_or(-1);
         let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
@@ -900,11 +996,13 @@ where
         thinking: full_thinking.trim().to_string(),
         model: reply_model,
         latency_ms: t0.elapsed().as_millis() as u64,
+        cancelled: false,
     })
 }
 
 /// 给 agent 模块复用的流式调用：边收边通过回调向外推送 thinking/content 增量。
 pub async fn complete_messages_stream<F>(
+    stream_id: Option<String>,
     messages: Vec<ChatMessage>,
     max_tokens: u32,
     on_chunk: F,
@@ -917,7 +1015,7 @@ where
         return Err("模型未开启".into());
     }
     tauri::async_runtime::spawn_blocking(move || {
-        send_stream_blocking(&cfg, messages, max_tokens, on_chunk)
+        send_stream_blocking(&cfg, messages, max_tokens, stream_id, on_chunk)
     })
     .await
     .map_err(|e| format!("后台流式线程异常：{e}"))
@@ -1301,6 +1399,7 @@ mod tests {
                 content: "你好".into(),
             }],
             64,
+            None,
             |k, s| events.push((k.to_string(), s.to_string())),
         )
         .expect("sse roundtrip should succeed");

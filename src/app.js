@@ -4,6 +4,7 @@ import { handle } from './lib/pipeline.js';
 import { scamGuard, guideAnswer, C_DRIVE_TIPS, NET_OFFLINE_TIPS } from './lib/guide.js';
 import { socialAnswer } from './lib/social.js';
 import { delayFor, sleep } from './lib/delay.js';
+import { escapeHtml, renderRichText } from './lib/format.js';
 
 const $ = (id) => document.getElementById(id);
 const app = $('app');
@@ -32,9 +33,12 @@ let PERMISSION_MODE = 'review';
 let SKIP_FULL_PERM_WARN = false;
 let ACTIVE_AGENT = null;
 
-// 流式输出状态
+// 流式输出与滚动控制状态
 let STREAM_SEQ = 1;
 let ACTIVE_STREAM = null;
+let IS_GENERATING = false;
+let CURRENT_STREAM_ID = null;
+let USER_SCROLLED_UP = false;
 
 // 模型下载源与各档下载状态
 let DL_DRAFT_SOURCE = 'modelscope';
@@ -93,6 +97,12 @@ function goto(page) {
 
 document.querySelectorAll('.nav-item').forEach((el) => {
   el.addEventListener('click', () => goto(el.dataset.page));
+  el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      goto(el.dataset.page);
+    }
+  });
 });
 
 $('btn-gear').onclick = () => goto('settings');
@@ -105,12 +115,22 @@ $('btn-chat-clear').onclick = () => startNewThread();
 $('btn-chat-history').onclick = () => toggleHistoryDrawer();
 $('btn-open-deepseek').onclick = () => api.openExternal('https://chat.deepseek.com');
 $('btn-tut-to-settings').onclick = () => goto('settings');
+$('btn-home-chat').onclick = () => {
+  goto('chat');
+  $('chat-text')?.focus();
+};
+$('btn-home-diag').onclick = () => {
+  goto('chat');
+  sendText('我电脑最近好卡，帮我体检一下');
+};
 $('btn-tier-source').onclick = () => {
   goto('settings');
+  const adv = $('settings-advanced');
+  if (adv) adv.open = true;
   setTimeout(() => {
     const el = $('setting-download-source');
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, 50);
+  }, 60);
 };
 $('btn-tier-import').onclick = async () => {
   try {
@@ -121,20 +141,23 @@ $('btn-tier-import').onclick = async () => {
     setImportStatus(`已导入：${saved.importedModelPath}`, 'ok');
     refreshRuntimeStatus();
     goto('settings');
+    const adv = $('settings-advanced');
+    if (adv) adv.open = true;
     setTimeout(() => {
       const el = $('setting-download-source');
       if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 50);
+    }, 60);
   } catch (e) {
     alert(`导入失败：${e.message || e}`);
   }
 };
 
 // ══════════════════════════════════════════════
-// 主题
+// 主题与字号
 // ══════════════════════════════════════════════
 
 const THEME_KEY = 'theme';
+const FONT_KEY = 'fontSize';
 
 function applyTheme(name) {
   const theme = name === 'dark' ? 'dark' : 'light';
@@ -144,13 +167,27 @@ function applyTheme(name) {
   try { localStorage.setItem(THEME_KEY, theme); } catch {}
 }
 
+function applyFontScale(scale) {
+  const val = scale === 'large' ? 'large' : 'normal';
+  document.documentElement.setAttribute('data-font', val);
+  document.querySelectorAll('#font-switch button').forEach((b) =>
+    b.classList.toggle('on', b.dataset.fontVal === val));
+  try { localStorage.setItem(FONT_KEY, val); } catch {}
+}
+
 function initTheme() {
   let saved = null;
+  let savedFont = null;
   try { saved = localStorage.getItem(THEME_KEY); } catch {}
+  try { savedFont = localStorage.getItem(FONT_KEY); } catch {}
   applyTheme(saved || 'light');       // 默认浅色
+  applyFontScale(savedFont || 'normal');
 
   document.querySelectorAll('#theme-switch button').forEach((b) => {
     b.onclick = () => applyTheme(b.dataset.themeVal);
+  });
+  document.querySelectorAll('#font-switch button').forEach((b) => {
+    b.onclick = () => applyFontScale(b.dataset.fontVal);
   });
 }
 
@@ -883,19 +920,124 @@ function buildHardwareSummary() {
   return lines.join('\n');
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, (c) =>
-    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// ══════════════════════════════════════════════
+// 对话输入、防抢滚动与快捷场景卡
+// ══════════════════════════════════════════════
+
+const QUICK_PROMPTS = [
+  { t: '查电脑为什么卡', d: '五项硬指标实测 + 最占内存程序', q: '我电脑最近好卡，帮我体检一下' },
+  { t: 'C 盘满了找大项', d: '扫描非系统大文件夹 + 安全迁移步骤', q: 'C 盘爆满了，帮我看看什么最占空间' },
+  { t: '找正版官网防假站', d: '28 款实测官网直达，避开高速下载器', q: '解压软件去哪下' },
+  { t: '测一下网通不通', d: '检测网关、DNS 与外网连通延迟', q: '帮我测一下现在网通不通' },
+  { t: '蓝屏 / 没声音急救', d: '按步骤排查，不用乱装万能驱动', q: '电脑突然蓝屏了怎么办' },
+  { t: '清理弹窗与流氓软件', d: '关自启、系统查杀与无残留卸载', q: '右下角老弹广告和流氓软件怎么彻底清干净' },
+];
+
+function buildQuickGridHtml() {
+  return `<div class="quick-grid" id="chat-quick-grid" aria-label="常用快捷问题">${QUICK_PROMPTS.map((item) =>
+    `<button class="quick-card" type="button" data-quick="${escapeHtml(item.q)}"><span class="qc-t">${escapeHtml(item.t)}</span><span class="qc-d">${escapeHtml(item.d)}</span></button>`
+  ).join('')}</div>`;
 }
 
-// ══════════════════════════════════════════════
-// 对话
-// ══════════════════════════════════════════════
+function bindQuickCards(root = document) {
+  root.querySelectorAll('[data-quick]').forEach((btn) => {
+    btn.onclick = () => sendText(btn.dataset.quick);
+  });
+}
 
-$('btn-send').onclick = send;
-$('chat-text').addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') send();
-});
+function hideQuickGrid() {
+  const grid = $('chat-quick-grid');
+  if (grid) grid.remove();
+}
+
+function scrollChatToBottom(force = false) {
+  const log = $('chat-log');
+  if (!log) return;
+  if (force) {
+    USER_SCROLLED_UP = false;
+    const btn = $('btn-scroll-bottom');
+    if (btn) btn.hidden = true;
+    log.scrollTop = log.scrollHeight;
+    return;
+  }
+  if (!USER_SCROLLED_UP) {
+    log.scrollTop = log.scrollHeight;
+  } else {
+    const btn = $('btn-scroll-bottom');
+    if (btn) btn.hidden = false;
+  }
+}
+
+function initChatControls() {
+  const log = $('chat-log');
+  const scrollBtn = $('btn-scroll-bottom');
+  if (log) {
+    log.addEventListener('scroll', () => {
+      const dist = log.scrollHeight - log.scrollTop - log.clientHeight;
+      USER_SCROLLED_UP = dist > 48;
+      if (scrollBtn) scrollBtn.hidden = !USER_SCROLLED_UP;
+    });
+  }
+  if (scrollBtn) {
+    scrollBtn.onclick = () => scrollChatToBottom(true);
+  }
+
+  const sendBtn = $('btn-send');
+  sendBtn.onclick = () => {
+    if (IS_GENERATING && CURRENT_STREAM_ID) {
+      api.llmCancelStream(CURRENT_STREAM_ID).catch(() => {});
+      sendBtn.disabled = true;
+      sendBtn.textContent = '停止中…';
+      return;
+    }
+    send();
+  };
+
+  const textarea = $('chat-text');
+  // 遵循 ime-safe-enter-submit：中文拼音输入法候选确认时绝不误提交
+  textarea.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      if (e.isComposing || e.keyCode === 229) return;
+      e.preventDefault();
+      if (!IS_GENERATING) send();
+    }
+  });
+
+  // 渐进式兼容：不支持 CSS field-sizing: content 时用轻量 JS 调整高度
+  if (typeof CSS === 'undefined' || !CSS.supports('field-sizing', 'content')) {
+    const autoResize = () => {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(140, Math.max(42, textarea.scrollHeight))}px`;
+    };
+    textarea.addEventListener('input', autoResize);
+  }
+
+  bindQuickCards(document);
+}
+
+function setSendButtonState(generating) {
+  IS_GENERATING = generating;
+  const btn = $('btn-send');
+  if (!btn) return;
+  btn.disabled = false;
+  if (generating) {
+    btn.classList.remove('primary');
+    btn.classList.add('stop-mode');
+    btn.textContent = '停止';
+  } else {
+    btn.classList.remove('stop-mode');
+    btn.classList.add('primary');
+    btn.textContent = '发送';
+  }
+}
+
+function sendText(text) {
+  const q = String(text || '').trim();
+  if (!q || IS_GENERATING) return;
+  const input = $('chat-text');
+  if (input) input.value = q;
+  send();
+}
 
 // 当前进行中的安装流程。同一时间只允许一个。
 let ACTIVE_FLOW = null;
@@ -1086,13 +1228,13 @@ async function initStreamEvents() {
     if (looksLikePlan) {
       bodyHtml = `<div class="stream-hint">正在整理待办步骤…</div>`;
     } else if (st.content) {
-      bodyHtml = `<div class="bubble-text">${escapeHtml(st.content)}</div>`;
+      bodyHtml = `<div class="bubble-text">${renderRichText(st.content)}</div>`;
     } else {
       bodyHtml = `<div class="stream-hint">思考中…</div>`;
     }
 
     st.div.innerHTML = `<div class="bubble">${thinkHtml}${bodyHtml}</div>`;
-    log.scrollTop = log.scrollHeight;
+    scrollChatToBottom(false);
   });
 }
 
@@ -1209,7 +1351,9 @@ function updateLastThreadAgentSession(session) {
 
 function renderThreadMessages(th) {
   const log = $('chat-log');
-  log.innerHTML = `<div class="msg bot"><div class="bubble">${escapeHtml(INITIAL_GREETING)}</div></div>`;
+  const empty = !th.messages || th.messages.length === 0;
+  log.innerHTML = `<div class="msg bot"><div class="bubble">${escapeHtml(INITIAL_GREETING)}</div></div>${empty ? buildQuickGridHtml() : ''}`;
+  if (empty) bindQuickCards(log);
   CHAT_HISTORY = [];
 
   for (const m of th.messages || []) {
@@ -1228,6 +1372,7 @@ function renderThreadMessages(th) {
     }
   }
   if (CHAT_HISTORY.length > 12) CHAT_HISTORY = CHAT_HISTORY.slice(-12);
+  scrollChatToBottom(true);
 }
 
 function renderHistoryDrawer() {
@@ -1337,19 +1482,23 @@ function appendTypingBubble() {
 }
 
 async function send() {
+  if (IS_GENERATING) return;
   const input = $('chat-text');
   const q = input.value.trim();
   if (!q) return;
   input.value = '';
+  input.style.height = '';
+  hideQuickGrid();
   addMsg('user', q);
+  scrollChatToBottom(true);
   recordThreadMsg({ who: 'user', text: q });
 
-  const btn = $('btn-send');
-  btn.disabled = true;
   const t0 = performance.now();
   const typingEl = appendTypingBubble();
 
   const streamId = `s-${STREAM_SEQ++}`;
+  CURRENT_STREAM_ID = streamId;
+  setSendButtonState(true);
   ACTIVE_STREAM = { id: streamId, typingEl, div: null, thinking: '', content: '' };
 
   let answer;
@@ -1361,6 +1510,7 @@ async function send() {
 
   const streamState = ACTIVE_STREAM;
   ACTIVE_STREAM = null;
+  CURRENT_STREAM_ID = null;
 
   // 若已经有真实流式文字输出，无需人为补延迟；纯规则快答仍保持自然节奏
   if (!streamState.div) {
@@ -1373,7 +1523,7 @@ async function send() {
   }
 
   if (streamState.typingEl) streamState.typingEl.remove();
-  btn.disabled = false;
+  setSendButtonState(false);
 
   const finalThinking = answer.thinking || streamState.thinking || '';
 
@@ -1385,6 +1535,7 @@ async function send() {
       log.appendChild(div);
     }
     renderAgentMsg(div, answer.agentSession, answer.meta, finalThinking);
+    scrollChatToBottom(false);
     recordThreadMsg({
       who: 'bot',
       text: answer.agentSession.summary || answer.text || '',
@@ -1416,11 +1567,10 @@ async function send() {
     const wasOpen = !!streamState.div.querySelector('.think-box')?.open;
     const thinkHtml = buildThinkBoxHtml(finalThinking, false, wasOpen);
     const srcHtml = buildSourcesHtml(answer.sources);
-    const tag = answer.meta ? `<div class="meta">${escapeHtml(answer.meta)}</div>` : '';
-    streamState.div.innerHTML = `<div class="bubble">${thinkHtml}${escapeHtml(answer.text)}${srcHtml}</div>${tag}`;
-    bindSourceLinks(streamState.div);
-    const log = $('chat-log');
-    log.scrollTop = log.scrollHeight;
+    const footHtml = buildMsgFootHtml(answer.meta);
+    streamState.div.innerHTML = `<div class="bubble">${thinkHtml}${renderRichText(answer.text)}${srcHtml}</div>${footHtml}`;
+    bindRichActions(streamState.div, answer.text);
+    scrollChatToBottom(false);
   } else {
     addMsg('bot', answer.text, answer.meta, performance.now() - t0, answer.actions, finalThinking, answer.sources);
   }
@@ -1440,6 +1590,49 @@ async function send() {
   }
 }
 
+async function copyToClipboard(text) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {}
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function flashCopied(btn, originalLabel) {
+  btn.classList.add('copied');
+  btn.textContent = '已复制 ✓';
+  setTimeout(() => {
+    btn.classList.remove('copied');
+    btn.textContent = originalLabel;
+  }, 1500);
+}
+
+function buildMsgFootHtml(meta) {
+  const tag = meta ? `<div class="meta">${escapeHtml(meta)}</div>` : '<div class="meta"></div>';
+  return `<div class="msg-foot">${tag}<button class="msg-copy-btn" type="button" data-copy-msg="1">复制</button></div>`;
+}
+
+function msgToneFromMeta(meta) {
+  const m = String(meta || '');
+  if (/安全提醒/.test(m)) return { cls: 'tone-alert', badge: '<div class="msg-badge alert">⚠ 安全警示</div>' };
+  if (/急救|体检/.test(m)) return { cls: 'tone-guide', badge: '<div class="msg-badge guide">排查指引</div>' };
+  return { cls: '', badge: '' };
+}
+
 function buildSourcesHtml(sources) {
   if (!Array.isArray(sources) || !sources.length) return '';
   const chips = sources.map((s) => {
@@ -1452,7 +1645,7 @@ function buildSourcesHtml(sources) {
   return `<div class="sources-bar"><span>参考来源：</span>${chips}</div>`;
 }
 
-function bindSourceLinks(container) {
+function bindRichActions(container, rawMsgText = '') {
   container.querySelectorAll('[data-open-url]').forEach((btn) => {
     btn.onclick = () => {
       const url = btn.dataset.openUrl;
@@ -1461,16 +1654,35 @@ function bindSourceLinks(container) {
       }
     };
   });
+  container.querySelectorAll('[data-copy]').forEach((btn) => {
+    const orig = btn.textContent;
+    btn.onclick = async () => {
+      const val = btn.dataset.copy || '';
+      if (await copyToClipboard(val)) {
+        flashCopied(btn, orig);
+      }
+    };
+  });
+  const msgCopy = container.querySelector('[data-copy-msg]');
+  if (msgCopy && rawMsgText) {
+    msgCopy.onclick = async () => {
+      if (await copyToClipboard(rawMsgText)) {
+        flashCopied(msgCopy, '复制');
+      }
+    };
+  }
 }
 
 function addMsg(who, text, meta, ms, actions, thinking = '', sources = null) {
   const log = $('chat-log');
   const div = document.createElement('div');
-  div.className = 'msg ' + who;
+  const tone = who === 'bot' ? msgToneFromMeta(meta) : { cls: '', badge: '' };
+  div.className = `msg ${who}${tone.cls ? ' ' + tone.cls : ''}`;
 
-  const tag = meta ? `<div class="meta">${escapeHtml(meta)}</div>` : '';
   const thinkHtml = who === 'bot' ? buildThinkBoxHtml(thinking, false, false) : '';
+  const bodyHtml = who === 'bot' ? renderRichText(text) : escapeHtml(text);
   const srcHtml = who === 'bot' ? buildSourcesHtml(sources) : '';
+  const footHtml = who === 'bot' ? buildMsgFootHtml(meta) : '';
 
   // 动作按钮：这是 agent 和聊天机器人的分界。
   // 有按钮，用户点一下就推进；没按钮，只是说说话。
@@ -1481,14 +1693,16 @@ function addMsg(who, text, meta, ms, actions, thinking = '', sources = null) {
       .join('')}</div>`;
   }
 
-  div.innerHTML = `<div class="bubble">${thinkHtml}${escapeHtml(text)}${srcHtml}</div>${btnHtml}${tag}`;
+  div.innerHTML = `<div class="bubble">${tone.badge}${thinkHtml}${bodyHtml}${srcHtml}</div>${btnHtml}${footHtml}`;
   log.appendChild(div);
-  log.scrollTop = log.scrollHeight;
+  scrollChatToBottom(false);
 
   div.querySelectorAll('[data-act]').forEach((b) => {
     b.onclick = () => onFlowAction(b.dataset.act, b);
   });
-  bindSourceLinks(div);
+  if (who === 'bot') {
+    bindRichActions(div, text);
+  }
 }
 
 // ══════════════════════════════════════════════
@@ -2241,6 +2455,7 @@ async function initSearchSettings() {
 // ══════════════════════════════════════════════
 
 initTheme();
+initChatControls();
 initPermissionControls();
 initLlmSettings();
 initSearchSettings();

@@ -33,42 +33,54 @@
   white-space: nowrap;
 }
 
-.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav { display: flex; flex-direction: column; gap: 3px; }
 
 .nav-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 40px;
   padding: 8px 12px;
-  border-radius: 7px;
-  font-size: 13px;
+  border-radius: 8px;
+  font-size: var(--fs-base);
   color: var(--dim);
   cursor: pointer;
   white-space: nowrap;
   transition: background .12s, color .12s;
 }
+.nav-item svg { flex-shrink: 0; opacity: .78; }
 .nav-item:hover { background: var(--surface-2); color: var(--text); }
-.nav-item.active { background: var(--surface-2); color: var(--text); }
+.nav-item.active {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 500;
+}
+.nav-item.active svg { color: var(--accent); opacity: 1; }
 
-/* ── 设置齿轮：钉在左下角 ─────────────────────
-   margin-top:auto 把它推到侧边栏底部，
-   只有图标没有文字，不抢导航的注意力。
-   ============================================ */
+/* ── 设置入口：钉在左下角，图标 + 文字清晰可读 ── */
 .nav-gear {
   margin-top: auto;
-  width: 34px;
-  height: 34px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 9px;
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: var(--mute);
-  transition: background .13s, color .13s, transform .3s;
+  color: var(--dim);
+  font-size: var(--fs-base);
+  white-space: nowrap;
+  transition: background .13s, color .13s;
 }
+.nav-gear svg { flex-shrink: 0; opacity: .8; }
 .nav-gear:hover {
   background: var(--surface-2);
   color: var(--text);
 }
-.nav-gear.active { background: var(--surface-2); color: var(--accent); }
+.nav-gear.active { background: var(--surface-2); color: var(--accent); font-weight: 500; }
 
 /* 让位状态：宽归零、透明、内边距归零，主区自动接满 */
 #app.zen .sidebar {
