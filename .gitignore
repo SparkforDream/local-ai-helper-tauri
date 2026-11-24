@@ -1,0 +1,33 @@
+# Rust / Tauri 构建产物
+src-tauri/target/
+src-tauri/gen/
+
+# 内置二进制推理引擎与模型权重（体积大，不进 Git 历史，打包时本地放置或发 Release）
+assets/runtime/
+*.gguf
+*.part
+*.bin
+*.exe
+*.dll
+
+# 开发过程截图（二进制大图片不入库）
+shots/
+
+# 常规临时与敏感文件
+__pycache__/
+*.pyc
+node_modules/
+.venv/
+dist/
+build/
+*.log
+*.tmp
+.env
+.env.*
+*.pem
+*.key
+*.p12
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
