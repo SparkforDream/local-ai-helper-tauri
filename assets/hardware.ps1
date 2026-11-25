@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
   hardware.ps1 — 只读硬件画像采集（零写入）
 
@@ -20,6 +20,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference    = 'SilentlyContinue'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
 $script:notes = [System.Collections.Generic.List[string]]::new()
 function Add-Note([string]$m) { $script:notes.Add($m) | Out-Null; Write-Verbose "note: $m" }

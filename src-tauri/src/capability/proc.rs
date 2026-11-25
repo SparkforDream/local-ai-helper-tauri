@@ -11,6 +11,12 @@ use super::{Args, Capability, Param, ParamType, Risk};
 use serde_json::{json, Value};
 use std::process::Command;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 pub fn capabilities() -> Vec<Capability> {
     vec![
         Capability {
@@ -49,16 +55,18 @@ pub fn capabilities() -> Vec<Capability> {
 
 fn run_ps(script: &str) -> Result<String, String> {
     for exe in ["pwsh.exe", "powershell.exe"] {
-        let out = Command::new(exe)
-            .args([
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-Command",
-                script,
-            ])
-            .output();
+        let mut cmd = Command::new(exe);
+        cmd.args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ]);
+        #[cfg(windows)]
+        cmd.creation_flags(CREATE_NO_WINDOW);
+        let out = cmd.output();
 
         if let Ok(o) = out {
             if o.status.success() {

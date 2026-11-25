@@ -238,7 +238,7 @@ pub fn diagnose(_: &Args) -> Result<Value, String> {
 $ErrorActionPreference = 'SilentlyContinue'
 $cpu = Get-CimInstance Win32_Processor | Select-Object -First 1
 $os  = Get-CimInstance Win32_OperatingSystem | Select-Object -First 1
-$c   = Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='C:'" | Select-Object -First 1
+$c   = Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DeviceID -eq 'C:' } | Select-Object -First 1
 $d   = Get-CimInstance Win32_PerfFormattedData_PerfDisk_PhysicalDisk | Where-Object { $_.Name -eq '_Total' } | Select-Object -First 1
 
 $memTotalGb = if ($os.TotalVisibleMemorySize) { [math]::Round($os.TotalVisibleMemorySize / 1048576, 2) } else { $null }
